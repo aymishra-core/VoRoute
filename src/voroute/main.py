@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from voroute.config import settings
 from voroute.models import Order
+from voroute.voflow import enqueue
 
 logger = logging.getLogger("voroute")
 logger.setLevel(logging.INFO)
@@ -33,5 +34,5 @@ def create_order(order: Order) -> dict[str, str]:
         order.amount,
         order.cod,
     )
-    # TODO: enqueue confirmation call (voflow → voline)
+    enqueue(order)
     return {"status": "queued", "order_id": order.order_id}

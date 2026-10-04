@@ -1,4 +1,4 @@
-"""Settings loaded from the environment. Keys are placeholders until telephony and voice are wired."""
+"""Settings loaded from the environment. Empty values are valid so the app can boot before credentials exist."""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     deepgram_api_key: str = ""
     elevenlabs_api_key: str = ""
     openai_api_key: str = ""
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""
     public_base_url: str = ""
 
 

@@ -1,8 +1,12 @@
 """Confirmation job and the status machine that decides when a call may be retried."""
 
 from enum import Enum
+from uuid import uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from voroute.models import Order
+from voroute.voflow.script import build_script
 
 
 class JobStatus(str, Enum):
@@ -36,6 +40,7 @@ class InvalidJobTransition(Exception):
 class ConfirmationJob(BaseModel):
     """Everything a confirmation call needs, except how to place it."""
 
+    job_id: str = Field(default_factory=lambda: str(uuid4()))
     order_id: str
     customer_name: str
     phone: str
@@ -44,6 +49,16 @@ class ConfirmationJob(BaseModel):
     attempt_count: int = 0
     max_attempts: int = 3
     status: JobStatus = JobStatus.PENDING
+
+    @classmethod
+    def from_order(cls, order: Order) -> "ConfirmationJob":
+        return cls(
+            order_id=order.order_id,
+            customer_name=order.customer_name,
+            phone=order.phone,
+            amount=order.amount,
+            script=build_script(order),
+        )
 
     def transition(self, status: JobStatus) -> None:
         allowed = _TRANSITIONS[self.status]

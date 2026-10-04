@@ -6,7 +6,6 @@ from voroute.voflow import (
     InvalidJobTransition,
     JobStatus,
     build_script,
-    enqueue,
 )
 
 def _order(
@@ -24,7 +23,7 @@ def _order(
 
 
 def test_enqueue_produces_pending_job() -> None:
-    job = enqueue(_order())
+    job = ConfirmationJob.from_order(_order())
 
     assert job.status is JobStatus.PENDING
     assert job.order_id == "ORD-1001"
@@ -58,7 +57,7 @@ def test_script_builder_outputs_name_and_amount() -> None:
     ],
 )
 def test_status_transitions_follow_the_call_flow(outcome: JobStatus) -> None:
-    job = enqueue(_order())
+    job = ConfirmationJob.from_order(_order())
 
     job.transition(JobStatus.CALLING)
     job.transition(outcome)
@@ -67,7 +66,7 @@ def test_status_transitions_follow_the_call_flow(outcome: JobStatus) -> None:
 
 
 def test_illegal_status_transition_is_rejected() -> None:
-    job = enqueue(_order())
+    job = ConfirmationJob.from_order(_order())
 
     with pytest.raises(InvalidJobTransition):
         job.transition(JobStatus.CONFIRMED)
@@ -79,7 +78,7 @@ def test_illegal_status_transition_is_rejected() -> None:
 
 
 def test_failed_attempt_retries_until_max() -> None:
-    job = enqueue(_order())
+    job = ConfirmationJob.from_order(_order())
 
     for _ in range(2):
         job.transition(JobStatus.CALLING)

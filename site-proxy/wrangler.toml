@@ -1,0 +1,11 @@
+name = "voroute-web"
+main = "worker.js"
+compatibility_date = "2026-10-05"
+
+[[routes]]
+pattern = "voroute.com/*"
+zone_name = "voroute.com"
+
+[[routes]]
+pattern = "www.voroute.com/*"
+zone_name = "voroute.com"

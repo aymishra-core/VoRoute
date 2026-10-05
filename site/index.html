@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="VoRoute places voice confirmation calls on cash-on-delivery orders for Indian D2C brands, before dispatch, to cut return-to-origin.">
+  <meta name="theme-color" content="#0c0d0c">
+  <meta property="og:title" content="VoRoute — Voice confirmation for COD orders">
+  <meta property="og:description" content="Most RTO isn't a delivery problem. It's an intent problem. VoRoute confirms the order before it ships.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://voroute.com">
+  <title>VoRoute — Voice confirmation for COD orders</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230c0d0c'/%3E%3Crect x='6' y='6' width='20' height='20' fill='none' stroke='%23c6f54e' stroke-width='1.5'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      --bg: #0c0d0c;
+      --ink: #e8e6df;
+      --muted: #8f8d84;
+      --faint: #5e5c55;
+      --line: rgba(232, 230, 223, 0.12);
+      --line-strong: rgba(232, 230, 223, 0.28);
+      --amber: #e3a008;
+      --phosphor: #c6f54e;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: var(--bg); color-scheme: dark; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 17px;
+      line-height: 1.5;
+      letter-spacing: -0.011em;
+    }
+
+    a { color: inherit; }
+
+    a:focus-visible {
+      outline: 1px solid var(--phosphor);
+      outline-offset: 3px;
+    }
+
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .mono {
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    }
+
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 22px 0 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .wordmark {
+      margin: 0;
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.22em;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      color: var(--muted);
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 0 4px rgba(227, 160, 8, 0.14);
+    }
+
+    .hero { padding: 64px 0 48px; }
+
+    h1 {
+      margin: 0;
+      max-width: 16ch;
+      font-size: clamp(2.05rem, 5vw, 3.35rem);
+      font-weight: 500;
+      letter-spacing: -0.035em;
+      line-height: 1.02;
+    }
+
+    .sub {
+      margin: 28px 0 0;
+      max-width: 36rem;
+      color: var(--muted);
+      font-size: 1.125rem;
+      line-height: 1.45;
+    }
+
+    .strip {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .strip div { padding: 16px 20px 16px 0; }
+
+    .strip div + div { border-left: 1px solid var(--line); padding-left: 20px; }
+
+    .strip b,
+    .strip span {
+      display: block;
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    }
+
+    .strip b {
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+    }
+
+    .strip span {
+      margin-top: 4px;
+      color: var(--faint);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    section {
+      padding: 56px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .kicker {
+      margin: 0 0 18px;
+      color: var(--faint);
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .problem p {
+      margin: 0;
+      max-width: 40rem;
+      font-size: 1.2rem;
+      line-height: 1.45;
+    }
+
+    .stat {
+      display: flex;
+      align-items: baseline;
+      gap: 18px;
+      margin-top: 32px;
+    }
+
+    .stat strong {
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      font-size: clamp(2.6rem, 6vw, 4rem);
+      font-weight: 500;
+      letter-spacing: -0.045em;
+      line-height: 0.9;
+    }
+
+    .stat em {
+      max-width: 14rem;
+      color: var(--muted);
+      font-style: normal;
+      font-size: 0.95rem;
+      line-height: 1.35;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      column-gap: 28px;
+      margin: 8px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .flow li {
+      padding: 18px 16px 4px 0;
+      border-top: 1px solid var(--line-strong);
+    }
+
+    .n-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .arr {
+      color: var(--faint);
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    }
+
+    .flow .n {
+      color: var(--phosphor);
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+    }
+
+    .flow strong {
+      display: block;
+      margin: 12px 0 6px;
+      font-weight: 500;
+    }
+
+    .flow p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .system p {
+      margin: 0;
+      max-width: 38rem;
+      color: var(--ink);
+    }
+
+    .pipe {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 22px;
+    }
+
+    .chip,
+    .pipe i {
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      font-style: normal;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .chip {
+      border: 1px solid var(--line-strong);
+      padding: 7px 10px;
+    }
+
+    .pipe i { color: var(--faint); }
+
+    footer {
+      padding: 28px 0 48px;
+      color: var(--faint);
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      letter-spacing: 0.02em;
+    }
+
+    footer a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    footer a:hover { color: var(--ink); }
+
+    @media (max-width: 760px) {
+      .hero { padding: 40px 0 32px; }
+
+      .strip,
+      .flow { grid-template-columns: 1fr; }
+
+      .strip div + div {
+        border-left: 0;
+        border-top: 1px solid var(--line);
+        padding-left: 0;
+      }
+
+      .strip div { padding: 14px 0; }
+
+      .flow li { padding: 16px 0 8px; }
+
+      .arr { display: none; }
+
+      .stat { align-items: flex-start; flex-direction: column; gap: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <p class="wordmark">VOROUTE</p>
+      <p class="status"><span class="dot" aria-hidden="true"></span> In development</p>
+    </header>
+
+    <section class="hero" aria-labelledby="descriptor">
+      <h1 id="descriptor">Voice confirmation for COD orders.</h1>
+      <p class="sub">Most RTO isn't a delivery problem. It's an intent problem. VoRoute confirms the order before it ships.</p>
+    </section>
+
+    <div class="strip" aria-label="Operating range">
+      <div>
+        <b>20–35%</b>
+        <span>COD orders return</span>
+      </div>
+      <div>
+        <b>Before dispatch</b>
+        <span>Confirmation window</span>
+      </div>
+      <div>
+        <b>Hindi · Hinglish</b>
+        <span>On the call</span>
+      </div>
+    </div>
+
+    <section class="problem" aria-labelledby="problem-label">
+      <p class="kicker" id="problem-label">01 — The problem</p>
+      <p>Indian COD orders bounce — impulse at 1am, forgotten by morning, refused at the door. The courier takes the blame. The order was dead on arrival.</p>
+      <div class="stat">
+        <strong>20–35%</strong>
+        <em>of COD orders return. The shipment left anyway.</em>
+      </div>
+    </section>
+
+    <section aria-labelledby="flow-label">
+      <p class="kicker" id="flow-label">02 — How it works</p>
+      <ol class="flow">
+        <li>
+          <div class="n-row"><span class="n">01</span><span class="arr" aria-hidden="true">→</span></div>
+          <strong>Order placed</strong>
+          <p>A COD order lands from the store.</p>
+        </li>
+        <li>
+          <div class="n-row"><span class="n">02</span><span class="arr" aria-hidden="true">→</span></div>
+          <strong>VoRoute calls</strong>
+          <p>An outbound call to the customer.</p>
+        </li>
+        <li>
+          <div class="n-row"><span class="n">03</span><span class="arr" aria-hidden="true">→</span></div>
+          <strong>Confirms intent</strong>
+          <p>Hindi or Hinglish. Haan, or na.</p>
+        </li>
+        <li>
+          <div class="n-row"><span class="n">04</span></div>
+          <strong>Ship or hold</strong>
+          <p>Dispatch only what was confirmed.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="system" aria-labelledby="system-label">
+      <p class="kicker" id="system-label">03 — The system</p>
+      <p>Real-time voice. Speech to text, intent, then speech back — Hindi and Hinglish — tied to the order store.</p>
+      <div class="pipe" aria-label="Voice pipeline">
+        <span class="chip">STT</span>
+        <i>→</i>
+        <span class="chip">Intent</span>
+        <i>→</i>
+        <span class="chip">TTS</span>
+        <i>·</i>
+        <span class="chip">Order store</span>
+      </div>
+    </section>
+
+    <footer>
+      Built by Ayush Mishra
+      · <a href="https://github.com/aymishra-core">GitHub</a>
+      · <a href="https://linkedin.com/in/aymishra01">LinkedIn</a>
+    </footer>
+  </div>
+</body>
+</html>

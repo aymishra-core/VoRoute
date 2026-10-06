@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="VoRoute dashboard. No live calls until Twilio is connected.">
+  <meta name="theme-color" content="#0c0d0c">
+  <title>Dashboard — VoRoute</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230c0d0c'/%3E%3Crect x='6' y='6' width='20' height='20' fill='none' stroke='%23c6f54e' stroke-width='1.5'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="wordmark" href="/">VOROUTE</a>
+      <nav class="console-nav" aria-label="Console">
+        <a href="/blueprint/">Blueprint</a>
+        <a href="/dashboard/" aria-current="page">Dashboard</a>
+        <a href="/settings/">Settings</a>
+      </nav>
+      <p class="status"><span class="dot" aria-hidden="true"></span> In development</p>
+    </header>
+
+    <main class="doc">
+      <p class="kicker">Orders · no live line</p>
+      <h1>Dashboard</h1>
+      <p class="lede">Jobs will land here after a store sends an order. The call column stays empty until Twilio is connected.</p>
+
+      <div class="strip four" aria-label="Call counts">
+        <div>
+          <b>0</b>
+          <span>Queued</span>
+        </div>
+        <div>
+          <b>0</b>
+          <span>Calling</span>
+        </div>
+        <div>
+          <b>0</b>
+          <span>Confirmed</span>
+        </div>
+        <div>
+          <b>Blocked</b>
+          <span>Twilio</span>
+        </div>
+      </div>
+
+      <table class="sheet">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Phone</th>
+            <th>Status</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">SPECIMEN</td>
+            <td>Not a customer</td>
+            <td>Pending blueprint</td>
+            <td>No call placed</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">The specimen row is a layout, not an order. Real rows appear only from a store, and only dial when voline has Twilio.</p>
+    </main>
+
+    <footer>
+      Built by Ayush Mishra
+      · <a href="https://github.com/aymishra-core">GitHub</a>
+      · <a href="https://linkedin.com/in/aymishra01">LinkedIn</a>
+      · <a href="/privacy/">Privacy</a>
+      · <a href="/terms/">Terms</a>
+      · <a href="/calling/">Calling</a>
+    </footer>
+  </div>
+</body>
+</html>

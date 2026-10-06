@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="What VoRoute will hold when it confirms a cash-on-delivery order, and what this website does not collect.">
+  <meta name="theme-color" content="#0c0d0c">
+  <title>Privacy — VoRoute</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230c0d0c'/%3E%3Crect x='6' y='6' width='20' height='20' fill='none' stroke='%23c6f54e' stroke-width='1.5'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="wordmark" href="/">VOROUTE</a>
+      <nav class="console-nav" aria-label="Site">
+        <a href="/blueprint/">Blueprint</a>
+        <a href="/dashboard/">Dashboard</a>
+        <a href="/settings/">Settings</a>
+      </nav>
+      <p class="status"><span class="dot" aria-hidden="true"></span> In development</p>
+    </header>
+
+    <main class="doc">
+      <p class="kicker">Privacy · 6 October 2026</p>
+      <h1>Privacy</h1>
+      <p class="lede">VoRoute is operated by Ayush Mishra. It is in development. This site does not take orders, and it does not place calls.</p>
+
+      <div class="prose">
+        <h2>This website</h2>
+        <p>voroute.com is a static page. There is no account, no form, and no analytics. Opening it does not create a customer record.</p>
+
+        <h2>When a confirmation call exists</h2>
+        <p>A store will send an order so VoRoute can confirm it before dispatch. That record is limited to what the call needs:</p>
+        <ul>
+          <li>Order id, customer name, phone number, amount, and whether the order is cash on delivery.</li>
+          <li>The confirmation script, call attempts, and the result: confirmed, cancelled, address fix, or no answer.</li>
+        </ul>
+        <p>The phone number is the one the customer gave the store at checkout. It is used to place that order’s confirmation call, not to build a marketing list.</p>
+
+        <h2>Who it is shared with</h2>
+        <p>To place a call, the number and the script have to reach the telephony provider and the voice services that listen and speak. Those providers process the call. VoRoute does not sell personal data.</p>
+
+        <h2>How long it is kept</h2>
+        <p>The result is kept with the order so the store can ship or hold. It is not kept as a separate contact database.</p>
+
+        <h2>Contact</h2>
+        <p>Questions go to Ayush Mishra via <a href="https://github.com/aymishra-core">GitHub</a> or <a href="https://linkedin.com/in/aymishra01">LinkedIn</a>.</p>
+      </div>
+    </main>
+
+    <footer>
+      Built by Ayush Mishra
+      · <a href="https://github.com/aymishra-core">GitHub</a>
+      · <a href="https://linkedin.com/in/aymishra01">LinkedIn</a>
+      · <a href="/privacy/">Privacy</a>
+      · <a href="/terms/">Terms</a>
+      · <a href="/calling/">Calling</a>
+    </footer>
+  </div>
+</body>
+</html>

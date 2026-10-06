@@ -1,0 +1,22 @@
+# Single instance only. Call scripts live in process memory, so more than one
+# instance would split Twilio's webhook from the process that queued the job.
+# Do not add a scaling block.
+# After the first deploy, set PUBLIC_BASE_URL in the Render dashboard to the
+# live Render URL (the onrender.com host this service is given).
+services:
+  - type: web
+    name: voroute
+    runtime: python
+    plan: free
+    numInstances: 1
+    buildCommand: pip install .
+    startCommand: uvicorn voroute.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false

@@ -16,6 +16,7 @@ dependencies = [
     "plivo==4.63.0",
     "httpx==0.28.1",
     "twilio==9.11.2",
+    "websockets==15.0.1",
 ]
 
 [project.optional-dependencies]

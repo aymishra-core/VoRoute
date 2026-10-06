@@ -12,6 +12,21 @@ def format_amount(amount: float) -> str:
 def build_script(order: Order) -> str:
     amount = format_amount(order.amount)
     return (
-        f"Namaste {order.customer_name} ji, aapka ₹{amount} ka COD order "
-        "confirm karna tha. Order chahiye? Haan ya na?"
+        f"Namaste {order.customer_name} ji. Aapka ₹{amount} ka cash on delivery "
+        "order confirm karne ke liye call kiya hai. Kya aap yeh order confirm "
+        "karna chahenge? Haan ya na."
     )
+
+
+def build_closing(name: str, status: str) -> str:
+    """Spoken after the outcome is already recorded. UNCLEAR does not say which way it went."""
+
+    if status == "CONFIRMED":
+        return f"Dhanyawaad {name} ji, aapka order confirm kar diya gaya hai."
+    if status == "DECLINED":
+        return (
+            f"Theek hai {name} ji, aapka order cancel kar diya gaya hai. Dhanyawaad."
+        )
+    if status == "UNCLEAR":
+        return "Dhanyawaad, hum aapse dobara sampark karenge."
+    raise ValueError(f"no closing line for {status}")

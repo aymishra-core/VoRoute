@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from voroute.config import settings
 from voroute.models import Order
 from voroute.voflow import enqueue
+from voroute.voline.listen import router as listen_router
 from voroute.voline.twiml import router as voice_router
 
 logger = logging.getLogger("voroute")
@@ -19,6 +20,7 @@ if not logger.handlers:
 app = FastAPI(title="VoRoute", version="0.1.0")
 app.state.settings = settings
 app.include_router(voice_router)
+app.include_router(listen_router)
 
 
 @app.get("/health")

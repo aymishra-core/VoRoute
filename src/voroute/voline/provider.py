@@ -54,3 +54,13 @@ def set_provider(provider: TelephonyProvider | None) -> None:
 
 def place_call(to: str, job: ConfirmationJob) -> str:
     return get_provider().place_call(to, job)
+
+
+def update_call_twiml(call_sid: str, twiml: str) -> None:
+    """Replace the live call's instructions. Used when a media stream errors."""
+
+    from twilio.rest import Client
+
+    Client(settings.twilio_account_sid, settings.twilio_auth_token).calls(
+        call_sid
+    ).update(twiml=twiml)

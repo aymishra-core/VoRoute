@@ -14,21 +14,32 @@ class JobStatus(str, Enum):
     CALLING = "CALLING"
     CONFIRMED = "CONFIRMED"
     DECLINED = "DECLINED"
+    UNCLEAR = "UNCLEAR"
     FAILED = "FAILED"
     MAX_RETRIES = "MAX_RETRIES"
 
+
+class CapturePath(str, Enum):
+    SPEECH = "speech"
+    KEYPAD = "keypad"
+    UNCLEAR = "unclear"
+
+
+_OUTCOMES = {JobStatus.CONFIRMED, JobStatus.DECLINED, JobStatus.UNCLEAR}
 
 _TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
     JobStatus.PENDING: {JobStatus.CALLING},
     JobStatus.CALLING: {
         JobStatus.CONFIRMED,
         JobStatus.DECLINED,
+        JobStatus.UNCLEAR,
         JobStatus.FAILED,
         JobStatus.MAX_RETRIES,
     },
     JobStatus.FAILED: {JobStatus.PENDING},
     JobStatus.CONFIRMED: set(),
     JobStatus.DECLINED: set(),
+    JobStatus.UNCLEAR: set(),
     JobStatus.MAX_RETRIES: set(),
 }
 
@@ -49,6 +60,10 @@ class ConfirmationJob(BaseModel):
     attempt_count: int = 0
     max_attempts: int = 3
     status: JobStatus = JobStatus.PENDING
+    speech_result: str = ""
+    capture_path: str = ""
+    transcript: str = ""
+    keypad_offered: bool = False
 
     @classmethod
     def from_order(cls, order: Order) -> "ConfirmationJob":
@@ -67,6 +82,14 @@ class ConfirmationJob(BaseModel):
                 f"cannot move {self.status.value} → {status.value}"
             )
         self.status = status
+
+    def record_outcome(self, status: JobStatus, path: CapturePath) -> None:
+        """Store a customer answer. UNCLEAR is terminal and is not a retry."""
+
+        if status not in _OUTCOMES:
+            raise InvalidJobTransition(f"cannot record {status.value} as a call outcome")
+        self.transition(status)
+        self.capture_path = path.value
 
     def record_failure(self) -> None:
         """Count a failed attempt. Under the cap the job can be retried; at the cap it stops."""

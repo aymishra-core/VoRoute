@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     twilio_auth_token: str = ""
     twilio_from_number: str = ""
     public_base_url: str = ""
+    voroute_api_key: str = ""
 
 
 settings = Settings()

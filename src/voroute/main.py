@@ -1,8 +1,10 @@
 """FastAPI entrypoint for the VoRoute server."""
 
+import hashlib
+import hmac
 import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
 
 from voroute.config import settings
 from voroute.models import Order
@@ -28,8 +30,35 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "voroute"}
 
 
+def _presented_bearer(authorization: str | None) -> str:
+    if not authorization:
+        return ""
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer":
+        return ""
+    return token.strip()
+
+
+def _key_matches(expected: str, presented: str) -> bool:
+    if not expected or not presented:
+        return False
+    return hmac.compare_digest(
+        hashlib.sha256(expected.encode()).digest(),
+        hashlib.sha256(presented.encode()).digest(),
+    )
+
+
+def require_api_key(authorization: str | None = Header(default=None)) -> None:
+    """POST /orders only. A blank server key rejects everyone."""
+
+    if not _key_matches(settings.voroute_api_key, _presented_bearer(authorization)):
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+
 @app.post("/orders")
-def create_order(order: Order) -> dict[str, str]:
+def create_order(
+    order: Order, _: None = Depends(require_api_key)
+) -> dict[str, str]:
     logger.info(
         "order_id=%s name=%s phone=%s amount=%s cod=%s queued for confirmation call",
         order.order_id,

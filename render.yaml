@@ -20,3 +20,5 @@ services:
         sync: false
       - key: PUBLIC_BASE_URL
         sync: false
+      - key: VOROUTE_API_KEY
+        sync: false

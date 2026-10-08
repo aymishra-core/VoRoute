@@ -1,5 +1,9 @@
 """Keep the suite offline: enqueue always dials through a stub unless a test sets its own provider."""
 
+import os
+
+os.environ["SESSION_SECRET"] = "test-session-secret-0123456789abcdef"
+
 import pytest
 
 from voroute.config import settings

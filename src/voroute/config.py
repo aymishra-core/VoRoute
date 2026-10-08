@@ -1,4 +1,4 @@
-"""Settings loaded from the environment. Empty values are valid so the app can boot before credentials exist."""
+"""Settings loaded from the environment. Provider credentials may be empty. SESSION_SECRET may not."""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     public_base_url: str = ""
     voroute_api_key: str = ""
     database_url: str = "sqlite:///voroute.db"
+    session_secret: str
 
 
 settings = Settings()

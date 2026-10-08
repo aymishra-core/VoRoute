@@ -1,10 +1,12 @@
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
 from voroute.config import settings
 from voroute.db import normalized_database_url
 from voroute.main import app
-from voroute.store import ensure_pilot_merchant, order_merchant_id
+from voroute.store import ensure_pilot_merchant, find_user_by_email, order_merchant_id
 
 client = TestClient(app)
 
@@ -77,6 +79,39 @@ def test_json_merchant_id_does_not_choose_the_owner(
     assert response.status_code == 200
     owner = order_merchant_id("ORD-OWNER")
     assert owner == ensure_pilot_merchant()
+    assert owner != "someone-else"
+
+
+def test_signup_token_queues_for_that_merchant(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "voroute_api_key", "test-key")
+    secure = TestClient(app, base_url="https://testserver")
+    page = secure.get("/signup")
+    match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+    assert match is not None
+    created = secure.post(
+        "/signup",
+        data={
+            "brand_name": "Shop",
+            "email": "shop@example.com",
+            "password": "longpassword",
+            "csrf_token": match.group(1),
+            "merchant_id": "someone-else",
+        },
+    )
+    assert created.status_code == 200
+    api_token = created.json()["api_token"]
+    payload = {**VALID_ORDER, "order_id": "ORD-SHOP", "merchant_id": "someone-else"}
+    response = secure.post(
+        "/orders",
+        json=payload,
+        headers={"Authorization": f"Bearer {api_token}"},
+    )
+    assert response.status_code == 200
+    owner = order_merchant_id("ORD-SHOP")
+    user = find_user_by_email("shop@example.com")
+    assert user is not None
+    assert owner == user.merchant_id
+    assert owner != ensure_pilot_merchant()
     assert owner != "someone-else"
 
 

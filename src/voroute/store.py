@@ -2,15 +2,16 @@
 
 import hashlib
 from collections.abc import Callable
+from typing import NamedTuple
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from voroute.config import settings
 from voroute.models import Order
-from voroute.tables import JobRow, MerchantRow, OrderRow, OutcomeRow
+from voroute.tables import JobRow, MerchantRow, OrderRow, OutcomeRow, UserRow
 from voroute.voflow.job import ConfirmationJob, JobStatus
 
 _ANSWERED = {
@@ -23,6 +24,21 @@ PILOT_NAME = "Pilot"
 
 class DuplicateOrder(Exception):
     """This merchant already has a row for that store order id."""
+
+
+class DuplicateEmail(Exception):
+    """That email is already registered."""
+
+
+class DuplicateToken(Exception):
+    """The generated intake-token hash collided. The caller retries once."""
+
+
+class StoredUser(NamedTuple):
+    id: str
+    merchant_id: str
+    email: str
+    password_hash: str
 
 
 def token_hash(token: str) -> str:
@@ -46,6 +62,81 @@ def ensure_pilot_merchant() -> str:
         session.add(merchant)
         session.commit()
         return merchant.id
+
+
+def create_account(
+    name: str, email: str, password_hash: str, api_token_hash: str
+) -> tuple[str, str]:
+    """Insert one merchant and its first user. Both rows commit or neither does."""
+
+    merchant_id = str(uuid4())
+    user_id = str(uuid4())
+    with _session() as session:
+        session.add(
+            MerchantRow(id=merchant_id, name=name, api_token_hash=api_token_hash)
+        )
+        try:
+            session.flush()
+            session.add(
+                UserRow(
+                    id=user_id,
+                    merchant_id=merchant_id,
+                    email=email,
+                    password_hash=password_hash,
+                )
+            )
+            session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            if "api_token_hash" in str(exc.orig):
+                raise DuplicateToken from exc
+            raise DuplicateEmail(email) from exc
+    return user_id, merchant_id
+
+
+def find_user_by_email(email: str) -> StoredUser | None:
+    with _session() as session:
+        row = session.scalar(select(UserRow).where(UserRow.email == email))
+        if row is None:
+            return None
+        return _stored_user(row)
+
+
+def find_user_by_id(user_id: str) -> StoredUser | None:
+    with _session() as session:
+        row = session.get(UserRow, user_id)
+        if row is None:
+            return None
+        return _stored_user(row)
+
+
+def merchant_id_for_token(token: str) -> str | None:
+    """Resolve a signup intake token. The pilot row is only reached via VOROUTE_API_KEY."""
+
+    if not token.strip():
+        return None
+    digest = token_hash(token)
+    with _session() as session:
+        found = session.scalar(
+            select(MerchantRow).where(MerchantRow.api_token_hash == digest)
+        )
+        if found is None or found.name == PILOT_NAME:
+            return None
+        return found.id
+
+
+def merchant_api_token_hash(merchant_id: str) -> str | None:
+    with _session() as session:
+        return session.scalar(
+            select(MerchantRow.api_token_hash).where(MerchantRow.id == merchant_id)
+        )
+
+
+def account_counts() -> tuple[int, int]:
+    with _session() as session:
+        merchants = session.scalar(select(func.count()).select_from(MerchantRow))
+        users = session.scalar(select(func.count()).select_from(UserRow))
+        return int(merchants or 0), int(users or 0)
 
 
 def create_pending(merchant_id: str, order: Order) -> ConfirmationJob:
@@ -171,6 +262,15 @@ def outcome_count(job_id: str) -> int:
             select(OutcomeRow).where(OutcomeRow.job_id == job_id)
         ).all()
         return len(rows)
+
+
+def _stored_user(row: UserRow) -> StoredUser:
+    return StoredUser(
+        id=row.id,
+        merchant_id=row.merchant_id,
+        email=row.email,
+        password_hash=row.password_hash,
+    )
 
 
 def _session() -> Session:

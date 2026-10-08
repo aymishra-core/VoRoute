@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from voroute.config import settings
 
-_ROOT = Path(__file__).resolve().parents[2]
 _engine: Engine | None = None
 _session_factory: sessionmaker[Session] | None = None
 _prepared_url: str | None = None
@@ -93,7 +92,8 @@ def _upgrade(url: str) -> None:
 
     from alembic import command
 
-    config = Config(str(_ROOT / "alembic.ini"))
-    config.set_main_option("script_location", str(_ROOT / "alembic"))
+    scripts = Path(__file__).resolve().parent / "alembic"
+    config = Config()
+    config.set_main_option("script_location", str(scripts))
     config.set_main_option("sqlalchemy.url", url)
     command.upgrade(config, "head")

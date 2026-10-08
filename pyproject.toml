@@ -17,6 +17,9 @@ dependencies = [
     "httpx==0.28.1",
     "twilio==9.11.2",
     "websockets==15.0.1",
+    "sqlalchemy==2.0.44",
+    "alembic==1.16.5",
+    "psycopg[binary]==3.2.10",
 ]
 
 [project.optional-dependencies]

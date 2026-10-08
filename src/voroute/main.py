@@ -3,11 +3,14 @@
 import hashlib
 import hmac
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
 from voroute.config import settings
+from voroute.db import prepare_database
 from voroute.models import Order
+from voroute.store import DuplicateOrder
 from voroute.voflow import enqueue
 from voroute.voline.listen import router as listen_router
 from voroute.voline.twiml import router as voice_router
@@ -19,7 +22,13 @@ if not logger.handlers:
     handler.setFormatter(logging.Formatter("%(levelname)s %(name)s %(message)s"))
     logger.addHandler(handler)
 
-app = FastAPI(title="VoRoute", version="0.1.0")
+@asynccontextmanager
+async def _lifespan(_app: object):
+    prepare_database()
+    yield
+
+
+app = FastAPI(title="VoRoute", version="0.1.0", lifespan=_lifespan)
 app.state.settings = settings
 app.include_router(voice_router)
 app.include_router(listen_router)
@@ -67,5 +76,8 @@ def create_order(
         order.amount,
         order.cod,
     )
-    enqueue(order)
+    try:
+        enqueue(order)
+    except DuplicateOrder:
+        raise HTTPException(status_code=409, detail="order already queued") from None
     return {"status": "queued", "order_id": order.order_id}

@@ -11,7 +11,8 @@ from voroute.config import settings
 from voroute.main import app
 from voroute.models import Order
 from voroute.voflow import ConfirmationJob, JobStatus, enqueue
-from voroute.voflow.dispatcher import get_job
+from voroute.store import outcome_count
+from voroute.voflow.dispatcher import get_job, note_speech
 from voroute.voline import listen, speech
 from voroute.voline.provider import TwilioProvider, set_provider
 
@@ -231,8 +232,7 @@ def test_listen_result_records_speech_and_hangs_up(
     monkeypatch.setattr(settings, "elevenlabs_api_key", "")
     monkeypatch.setattr(settings, "public_base_url", "https://calls.test")
     job = enqueue(_order())
-    job.speech_result = "CONFIRMED"
-    job.transcript = "haan ji"
+    note_speech(job.job_id, "CONFIRMED", "haan ji")
 
     response = client.post(f"/voice/listen-result/{job.job_id}")
 
@@ -244,11 +244,14 @@ def test_listen_result_records_speech_and_hangs_up(
     assert say.attrib["voice"] == "Polly.Aditi"
     assert root.find("Hangup") is not None
     assert root.find("Gather") is None
-    assert job.status is JobStatus.CONFIRMED
-    assert job.capture_path == "speech"
+    stored = get_job(job.job_id)
+    assert stored is not None
+    assert stored.status is JobStatus.CONFIRMED
+    assert stored.capture_path == "speech"
     again = client.post(f"/voice/listen-result/{job.job_id}")
     assert ET.fromstring(again.text).find("Hangup") is not None
-    assert job.status is JobStatus.CONFIRMED
+    assert get_job(job.job_id).status is JobStatus.CONFIRMED
+    assert outcome_count(job.job_id) == 1
 
 
 def test_confirmed_close_plays_a_separate_elevenlabs_clip(
@@ -273,8 +276,7 @@ def test_confirmed_close_plays_a_separate_elevenlabs_clip(
 
     monkeypatch.setattr(speech.httpx, "post", fake_post)
     job = enqueue(_order())
-    job.speech_result = "CONFIRMED"
-    job.transcript = "haan"
+    note_speech(job.job_id, "CONFIRMED", "haan")
 
     response = client.post(f"/voice/listen-result/{job.job_id}")
 
@@ -295,8 +297,7 @@ def test_listen_result_offers_keypad_when_speech_is_unclear(
 ) -> None:
     monkeypatch.setattr(settings, "public_base_url", "https://calls.test")
     job = enqueue(_order())
-    job.speech_result = "UNCLEAR"
-    job.transcript = "theek hai"
+    note_speech(job.job_id, "UNCLEAR", "theek hai")
 
     response = client.post(f"/voice/listen-result/{job.job_id}")
 
@@ -306,8 +307,10 @@ def test_listen_result_offers_keypad_when_speech_is_unclear(
     assert gather is not None
     assert gather.find("Say").text == "confirm ke liye 1 dabayein, cancel ke liye 2"
     assert root.find("Hangup") is None
-    assert job.status is JobStatus.CALLING
-    assert job.capture_path == ""
+    stored = get_job(job.job_id)
+    assert stored is not None
+    assert stored.status is JobStatus.CALLING
+    assert stored.capture_path == ""
 
 
 @pytest.mark.parametrize(
@@ -349,7 +352,7 @@ def test_dtmf_records_the_keypad_answer(
     monkeypatch.setattr(settings, "elevenlabs_api_key", "")
     monkeypatch.setattr(settings, "public_base_url", "https://calls.test")
     job = enqueue(_order())
-    job.speech_result = "UNCLEAR"
+    note_speech(job.job_id, "UNCLEAR", "")
 
     response = client.post(f"/voice/dtmf/{job.job_id}", data={"Digits": digits})
 
@@ -362,9 +365,11 @@ def test_dtmf_records_the_keypad_answer(
     if status is JobStatus.UNCLEAR:
         assert "confirm" not in line
         assert "cancel" not in line
-    assert job.status is status
-    assert job.capture_path == path
-    assert job.attempt_count == 0
+    stored = get_job(job.job_id)
+    assert stored is not None
+    assert stored.status is status
+    assert stored.capture_path == path
+    assert stored.attempt_count == 0
 
 
 def test_stream_error_sends_keypad_when_redirect_has_no_answer(
@@ -404,8 +409,7 @@ def test_stream_error_hangs_up_a_decisive_speech_result(
 
     monkeypatch.setattr("voroute.voline.twiml.update_call_twiml", fake_update)
     job = enqueue(_order())
-    job.speech_result = "DECLINED"
-    job.transcript = "nahi"
+    note_speech(job.job_id, "DECLINED", "nahi")
 
     response = client.post(
         f"/voice/stream-status/{job.job_id}",
@@ -413,8 +417,10 @@ def test_stream_error_hangs_up_a_decisive_speech_result(
     )
 
     assert response.status_code == 204
-    assert job.status is JobStatus.DECLINED
-    assert job.capture_path == "speech"
+    stored = get_job(job.job_id)
+    assert stored is not None
+    assert stored.status is JobStatus.DECLINED
+    assert stored.capture_path == "speech"
     root = ET.fromstring(sent[0])
     say = root.find("Say")
     assert say is not None
@@ -517,12 +523,16 @@ def test_media_stream_plays_through_to_a_confirmed_hangup(
     assert isinstance(socket, FakeDeepgram)
     assert b"\xff" in socket.sent
     assert json.dumps({"type": "CloseStream"}) in socket.sent
-    assert job.speech_result == "CONFIRMED"
-    assert job.transcript == "haan ji"
+    stored = get_job(job.job_id)
+    assert stored is not None
+    assert stored.speech_result == "CONFIRMED"
+    assert stored.transcript == "haan ji"
     response = client.post(f"/voice/listen-result/{job.job_id}")
     assert ET.fromstring(response.text).find("Hangup") is not None
-    assert job.status is JobStatus.CONFIRMED
-    assert job.capture_path == "speech"
+    finished = get_job(job.job_id)
+    assert finished is not None
+    assert finished.status is JobStatus.CONFIRMED
+    assert finished.capture_path == "speech"
 
 
 def test_deepgram_url_is_nova3_mulaw_hinglish(monkeypatch: pytest.MonkeyPatch) -> None:

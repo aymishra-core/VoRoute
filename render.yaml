@@ -1,5 +1,6 @@
-# Single instance only. Call scripts live in process memory, so more than one
-# instance would split Twilio's webhook from the process that queued the job.
+# Single instance only. Job rows live in the database. The in-flight media
+# stream and the MP3 still live in this process, so more than one instance
+# would split Twilio's websocket from the process that placed the call.
 # Do not add a scaling block.
 # After the first deploy, set PUBLIC_BASE_URL in the Render dashboard to the
 # live Render URL (the onrender.com host this service is given).
@@ -27,4 +28,6 @@ services:
       - key: PUBLIC_BASE_URL
         sync: false
       - key: VOROUTE_API_KEY
+        sync: false
+      - key: DATABASE_URL
         sync: false

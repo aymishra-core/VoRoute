@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     twilio_from_number: str = ""
     public_base_url: str = ""
     voroute_api_key: str = ""
+    database_url: str = "sqlite:///voroute.db"
 
 
 settings = Settings()

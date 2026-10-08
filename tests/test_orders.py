@@ -2,7 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from voroute.config import settings
+from voroute.db import normalized_database_url
 from voroute.main import app
+from voroute.store import ensure_pilot_merchant, order_merchant_id
 
 client = TestClient(app)
 
@@ -65,6 +67,29 @@ def test_voice_route_does_not_require_the_orders_key(
         "/voice/twiml/00000000-0000-0000-0000-000000000000"
     )
     assert response.status_code != 401
+
+
+def test_json_merchant_id_does_not_choose_the_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {**VALID_ORDER, "order_id": "ORD-OWNER", "merchant_id": "someone-else"}
+    response = client.post("/orders", json=payload, headers=_auth(monkeypatch))
+    assert response.status_code == 200
+    owner = order_merchant_id("ORD-OWNER")
+    assert owner == ensure_pilot_merchant()
+    assert owner != "someone-else"
+
+
+def test_postgres_url_uses_the_psycopg_driver() -> None:
+    assert (
+        normalized_database_url("postgres://user:secret@db.internal/voroute")
+        == "postgresql+psycopg://user:secret@db.internal/voroute"
+    )
+    assert (
+        normalized_database_url("postgresql://user:secret@db.internal/voroute")
+        == "postgresql+psycopg://user:secret@db.internal/voroute"
+    )
+    assert normalized_database_url("sqlite:///voroute.db") == "sqlite:///voroute.db"
 
 
 def test_missing_fields_return_422(monkeypatch: pytest.MonkeyPatch) -> None:

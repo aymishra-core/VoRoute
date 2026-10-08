@@ -1,6 +1,5 @@
 """Call orchestration: decides when to place a call and queues it."""
 
-from voroute.voflow.dispatcher import enqueue
 from voroute.voflow.job import (
     CapturePath,
     ConfirmationJob,
@@ -18,3 +17,11 @@ __all__ = [
     "build_script",
     "enqueue",
 ]
+
+
+def __getattr__(name: str) -> object:
+    if name == "enqueue":
+        from voroute.voflow.dispatcher import enqueue
+
+        return enqueue
+    raise AttributeError(name)

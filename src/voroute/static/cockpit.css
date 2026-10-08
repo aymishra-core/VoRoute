@@ -247,6 +247,21 @@ button {
 
 .back { display: inline-block; margin-top: 28px; color: var(--muted); }
 
+details.settings {
+  margin-top: 48px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+details.settings summary {
+  cursor: pointer;
+  color: var(--faint);
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 720px) {
   .strip { grid-template-columns: 1fr 1fr; }
   .sheet { display: block; overflow-x: auto; }

@@ -15,6 +15,7 @@ from starlette.templating import Jinja2Templates
 
 from voroute.auth import (
     AuthError,
+    CsrfError,
     authenticate,
     csrf_ok,
     current_merchant_id,
@@ -92,6 +93,11 @@ def create_app() -> FastAPI:
     application.include_router(voice_router)
     application.include_router(listen_router)
     _routes(application)
+
+    @application.exception_handler(CsrfError)
+    async def _on_csrf(request: Request, _exc: CsrfError) -> HTMLResponse:
+        return _csrf_failed(request)
+
     return application
 
 
@@ -100,16 +106,20 @@ def _routes(application: FastAPI) -> None:
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "voroute"}
 
-    @application.get("/login", response_class=HTMLResponse)
-    def show_login(request: Request) -> HTMLResponse:
+    @application.get("/login", response_model=None)
+    def show_login(request: Request) -> HTMLResponse | RedirectResponse:
+        if current_merchant_id(request.session) is not None:
+            return RedirectResponse("/app", status_code=303)
         return templates.TemplateResponse(
             request,
             "login.html",
             {"csrf_token": issue_csrf(request.session)},
         )
 
-    @application.get("/signup", response_class=HTMLResponse)
-    def show_signup(request: Request) -> HTMLResponse:
+    @application.get("/signup", response_model=None)
+    def show_signup(request: Request) -> HTMLResponse | RedirectResponse:
+        if current_merchant_id(request.session) is not None:
+            return RedirectResponse("/app", status_code=303)
         return templates.TemplateResponse(
             request,
             "signup.html",
@@ -167,10 +177,17 @@ def _routes(application: FastAPI) -> None:
         csrf_token: str = Form(""),
     ) -> HTMLResponse:
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
-            return _csrf_failed(request)
+            raise CsrfError()
         try:
             user_id, _merchant_id, api_token = signup(brand_name, email, password)
         except AuthError as exc:
+            if exc.status_code == 409:
+                return templates.TemplateResponse(
+                    request,
+                    "signup_exists.html",
+                    {"email": email},
+                    status_code=409,
+                )
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
         rotated = establish_session(request.session, user_id)
         return templates.TemplateResponse(
@@ -191,7 +208,7 @@ def _routes(application: FastAPI) -> None:
         if not isinstance(merchant_id, str):
             return merchant_id
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
-            return _csrf_failed(request)
+            raise CsrfError()
         try:
             api_token = regenerate_api_token(merchant_id)
         except AuthError as exc:
@@ -215,7 +232,7 @@ def _routes(application: FastAPI) -> None:
         csrf_token: str = Form(""),
     ) -> HTMLResponse | dict[str, str]:
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
-            return _csrf_failed(request)
+            raise CsrfError()
         user_id = authenticate(email, password)
         if user_id is None:
             raise HTTPException(status_code=401, detail="email or password is wrong")
@@ -227,7 +244,7 @@ def _routes(application: FastAPI) -> None:
         if current_merchant_id(request.session) is None:
             raise HTTPException(status_code=401, detail="unauthorized")
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
-            return _csrf_failed(request)
+            raise CsrfError()
         request.session.clear()
         return {"status": "ok"}
 
@@ -272,7 +289,7 @@ def _csrf_failed(request: Request) -> HTMLResponse:
             "next_href": "/app" if signed_in else "/login",
             "next_label": "Go to dashboard" if signed_in else "Log in",
         },
-        status_code=403,
+        status_code=400,
     )
 
 

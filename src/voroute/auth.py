@@ -34,6 +34,10 @@ class AuthError(Exception):
         self.status_code = status_code
 
 
+class CsrfError(Exception):
+    """A form post presented a missing, wrong, or already-used CSRF token."""
+
+
 def require_session_secret(secret: str) -> None:
     """Refuse to build the app around a missing or short signing key."""
 

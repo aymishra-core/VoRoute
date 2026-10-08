@@ -130,7 +130,13 @@ def test_duplicate_email_rolls_back_the_merchant(client: TestClient) -> None:
     before = account_counts()
     again = _signup(client, email="OWNER@shop.example", brand="Other")
     assert again.status_code == 409
-    assert again.json() == {"detail": "an account with that email already exists"}
+    assert "text/html" in again.headers["content-type"]
+    assert "application/json" not in again.headers["content-type"]
+    assert "That account already exists" in again.text
+    assert "OWNER@shop.example is already registered." in again.text
+    assert 'href="/login"' in again.text
+    assert PASSWORD not in again.text
+    assert "api_token" not in again.text
     assert account_counts() == before
 
 
@@ -231,7 +237,7 @@ _CSRF_PAGE = (
 
 
 def _assert_csrf_page(response: object, href: str) -> None:
-    assert response.status_code == 403  # type: ignore[attr-defined]
+    assert response.status_code == 400  # type: ignore[attr-defined]
     assert "text/html" in response.headers["content-type"]  # type: ignore[attr-defined]
     assert "application/json" not in response.headers["content-type"]  # type: ignore[attr-defined]
     text = response.text  # type: ignore[attr-defined]
@@ -360,6 +366,47 @@ def test_orders_bad_key_stays_json(client: TestClient) -> None:
     assert response.status_code == 401
     assert response.headers["content-type"].startswith("application/json")
     assert response.json() == {"detail": "unauthorized"}
+
+
+def test_csrf_handler_reads_the_session(client: TestClient) -> None:
+    created = _signup(client)
+    cookie = client.cookies.get("voroute_session")
+    assert cookie is not None
+    before = _read_session(cookie)
+    assert isinstance(before.get("user_id"), str) and before["user_id"]
+    failed = client.post(
+        "/logout",
+        data={"csrf_token": "not-the-token"},
+    )
+    _assert_csrf_page(failed, "/app")
+    again = client.cookies.get("voroute_session")
+    assert again is not None
+    after = _read_session(again)
+    assert after["user_id"] == before["user_id"]
+    assert after["csrf_token"] == before["csrf_token"]
+    anonymous = TestClient(app, base_url="https://testserver")
+    missing = anonymous.post(
+        "/signup",
+        data={"brand_name": "Shop", "email": "new@shop.example", "password": PASSWORD},
+    )
+    _assert_csrf_page(missing, "/login")
+    assert created.status_code == 200
+
+
+def test_logged_in_login_and_signup_redirect_home(client: TestClient) -> None:
+    assert _signup(client).status_code == 200
+    cookie = client.cookies.get("voroute_session")
+    assert cookie is not None
+    before = _read_session(cookie)["csrf_token"]
+    login = client.get("/login", follow_redirects=False)
+    signup = client.get("/signup", follow_redirects=False)
+    assert login.status_code == 303
+    assert signup.status_code == 303
+    assert login.headers["location"].endswith("/app")
+    assert signup.headers["location"].endswith("/app")
+    stayed = client.cookies.get("voroute_session")
+    assert stayed is not None
+    assert _read_session(stayed)["csrf_token"] == before
 
 
 def test_regenerate_without_a_session_redirects_to_login(client: TestClient) -> None:

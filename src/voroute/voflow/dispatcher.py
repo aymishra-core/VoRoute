@@ -18,6 +18,7 @@ from voroute.voline.provider import place_call
 logger = logging.getLogger("voroute.voflow")
 
 _DECISIVE = {JobStatus.CONFIRMED.value, JobStatus.DECLINED.value}
+_CALL_ENDED = {"completed", "busy", "no-answer", "failed", "canceled"}
 
 
 class AfterListen(str, Enum):
@@ -88,6 +89,21 @@ def apply_stream_error(job_id: str) -> AfterListen:
     if found is None:
         return AfterListen.NONE
     return found[0]
+
+
+def apply_call_ended(job_id: str, call_status: str) -> None:
+    """An unresolved call ends UNCLEAR. A recorded answer is left as it is."""
+
+    if call_status.strip() not in _CALL_ENDED:
+        return
+
+    def _end(job: ConfirmationJob) -> None:
+        if job.status is not JobStatus.CALLING:
+            return
+        job.record_outcome(JobStatus.UNCLEAR, CapturePath.UNCLEAR)
+        _log_outcome(job)
+
+    locked_update(job_id, _end)
 
 
 def apply_digits(job_id: str, digits: str) -> AfterListen:

@@ -29,10 +29,15 @@ class TwilioProvider:
 
     def place_call(self, to: str, job: ConfirmationJob) -> str:
         base = settings.public_base_url.rstrip("/")
+        # Twilio's only terminal event name is "completed". busy, no-answer,
+        # failed, and canceled arrive as CallStatus on that same callback.
         call = self._rest_client().calls.create(
             to=to,
             from_=settings.twilio_from_number,
             url=f"{base}/voice/twiml/{job.job_id}",
+            status_callback=f"{base}/voice/call-status/{job.job_id}",
+            status_callback_method="POST",
+            status_callback_event=["completed"],
         )
         return str(call.sid)
 

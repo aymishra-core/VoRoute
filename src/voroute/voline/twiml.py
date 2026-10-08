@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, Response
 from voroute.config import settings
 from voroute.voflow.dispatcher import (
     AfterListen,
+    apply_call_ended,
     apply_digits,
     apply_listen_result,
     apply_stream_error,
@@ -165,11 +166,25 @@ async def dtmf_result(job_id: str, request: Request) -> Response:
     return _xml(action, job_id)
 
 
+@router.post("/voice/call-status/{job_id}")
+async def call_status(job_id: str, request: Request) -> Response:
+    form = await _form(request)
+    status = form.get("CallStatus", "")
+    logger.info("job_id=%s voice=call-status status=%s", job_id, status or "n/a")
+    apply_call_ended(job_id, status)
+    return Response(status_code=204)
+
+
 @router.post("/voice/stream-status/{job_id}")
 async def stream_status(job_id: str, request: Request) -> Response:
     form = await _form(request)
     if form.get("StreamEvent") != "stream-error":
         return Response(status_code=204)
+    logger.info(
+        "job_id=%s voice=stream-error twilio=%s",
+        job_id,
+        form.get("StreamError") or "n/a",
+    )
     action = apply_stream_error(job_id)
     call_sid = form.get("CallSid", "")
     if action is AfterListen.NONE or not call_sid:

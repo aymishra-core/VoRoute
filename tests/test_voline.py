@@ -1,5 +1,7 @@
+import asyncio
 import base64
 import json
+import logging
 import xml.etree.ElementTree as ET
 from unittest.mock import MagicMock
 
@@ -12,7 +14,7 @@ from voroute.main import app
 from voroute.models import Order
 from voroute.voflow import ConfirmationJob, JobStatus, enqueue
 from voroute.store import outcome_count
-from voroute.voflow.dispatcher import get_job, note_speech
+from voroute.voflow.dispatcher import apply_listen_result, get_job, note_speech
 from voroute.voline import listen, speech
 from voroute.voline.provider import TwilioProvider, set_provider
 
@@ -56,6 +58,9 @@ def test_place_call_builds_twilio_params(monkeypatch: pytest.MonkeyPatch) -> Non
         to="+919876543210",
         from_="+15550001111",
         url=f"https://calls.test/voice/twiml/{job.job_id}",
+        status_callback=f"https://calls.test/voice/call-status/{job.job_id}",
+        status_callback_method="POST",
+        status_callback_event=["completed"],
     )
 
 
@@ -85,6 +90,9 @@ def test_enqueue_moves_job_from_pending_to_calling(
         to="+919876543210",
         from_="+15550001111",
         url=f"https://calls.test/voice/twiml/{job.job_id}",
+        status_callback=f"https://calls.test/voice/call-status/{job.job_id}",
+        status_callback_method="POST",
+        status_callback_event=["completed"],
     )
 
 
@@ -372,8 +380,119 @@ def test_dtmf_records_the_keypad_answer(
     assert stored.attempt_count == 0
 
 
+@pytest.mark.parametrize(
+    "call_status",
+    ["completed", "busy", "no-answer", "failed", "canceled"],
+)
+def test_terminal_call_status_resolves_a_calling_job_to_unclear(
+    call_status: str,
+) -> None:
+    job = enqueue(
+        Order(
+            order_id=f"ORD-{call_status}",
+            customer_name="Asha",
+            phone="+919876543210",
+            amount=499.0,
+            cod=True,
+        )
+    )
+
+    response = client.post(
+        f"/voice/call-status/{job.job_id}",
+        data={"CallStatus": call_status},
+    )
+
+    assert response.status_code == 204
+    stored = get_job(job.job_id)
+    assert stored is not None
+    assert stored.status is JobStatus.UNCLEAR
+    assert stored.status is not JobStatus.CONFIRMED
+    assert stored.capture_path == "unclear"
+    assert outcome_count(job.job_id) == 1
+
+    again = client.post(
+        f"/voice/call-status/{job.job_id}",
+        data={"CallStatus": call_status},
+    )
+    assert again.status_code == 204
+    assert get_job(job.job_id).status is JobStatus.UNCLEAR  # type: ignore[union-attr]
+    assert outcome_count(job.job_id) == 1
+
+
+def test_call_status_does_not_promote_unrecorded_speech_to_confirmed() -> None:
+    job = enqueue(_order())
+    note_speech(job.job_id, "CONFIRMED", "haan")
+    assert get_job(job.job_id).status is JobStatus.CALLING  # type: ignore[union-attr]
+
+    response = client.post(
+        f"/voice/call-status/{job.job_id}",
+        data={"CallStatus": "completed"},
+    )
+
+    assert response.status_code == 204
+    stored = get_job(job.job_id)
+    assert stored is not None
+    assert stored.status is JobStatus.UNCLEAR
+    assert stored.capture_path == "unclear"
+
+
+@pytest.mark.parametrize(
+    ("verdict", "transcript", "status"),
+    [
+        ("CONFIRMED", "haan", JobStatus.CONFIRMED),
+        ("DECLINED", "nahi", JobStatus.DECLINED),
+    ],
+)
+def test_late_call_status_does_not_overwrite_a_recorded_answer(
+    verdict: str,
+    transcript: str,
+    status: JobStatus,
+) -> None:
+    job = enqueue(
+        Order(
+            order_id=f"ORD-{verdict}",
+            customer_name="Asha",
+            phone="+919876543210",
+            amount=499.0,
+            cod=True,
+        )
+    )
+    note_speech(job.job_id, verdict, transcript)
+    assert apply_listen_result(job.job_id) is not None
+    assert get_job(job.job_id).status is status  # type: ignore[union-attr]
+
+    response = client.post(
+        f"/voice/call-status/{job.job_id}",
+        data={"CallStatus": "completed"},
+    )
+
+    assert response.status_code == 204
+    stored = get_job(job.job_id)
+    assert stored is not None
+    assert stored.status is status
+    assert stored.capture_path == "speech"
+    assert outcome_count(job.job_id) == 1
+
+
+def test_in_progress_call_status_leaves_the_job_calling() -> None:
+    job = enqueue(_order())
+
+    for call_status in ("ringing", "in-progress", ""):
+        response = client.post(
+            f"/voice/call-status/{job.job_id}",
+            data={"CallStatus": call_status},
+        )
+        assert response.status_code == 204
+
+    stored = get_job(job.job_id)
+    assert stored is not None
+    assert stored.status is JobStatus.CALLING
+    assert outcome_count(job.job_id) == 0
+
+
 def test_stream_error_sends_keypad_when_redirect_has_no_answer(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setattr(settings, "public_base_url", "https://calls.test")
     sent: list[tuple[str, str]] = []
@@ -383,13 +502,19 @@ def test_stream_error_sends_keypad_when_redirect_has_no_answer(
 
     monkeypatch.setattr("voroute.voline.twiml.update_call_twiml", fake_update)
     job = enqueue(_order())
+    caplog.set_level(logging.INFO, logger="voroute.voline")
 
     response = client.post(
         f"/voice/stream-status/{job.job_id}",
-        data={"StreamEvent": "stream-error", "CallSid": "CA_ERR"},
+        data={
+            "StreamEvent": "stream-error",
+            "CallSid": "CA_ERR",
+            "StreamError": "31903 Stream - WebSocket - Connection Broken Pipe",
+        },
     )
 
     assert response.status_code == 204
+    assert "voice=stream-error twilio=31903 Stream - WebSocket - Connection Broken Pipe" in caplog.text
     assert job.status is JobStatus.CALLING
     assert sent[0][0] == "CA_ERR"
     gather = ET.fromstring(sent[0][1]).find("Gather")
@@ -449,6 +574,56 @@ def test_stream_stopped_does_not_update_the_call(
     assert response.status_code == 204
     assert called == []
     assert job.status is JobStatus.CALLING
+
+
+def test_deepgram_open_failure_is_logged_apart_from_a_midstream_drop(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(settings, "deepgram_api_key", "dg-test")
+    job = enqueue(_order())
+
+    def _refuse() -> object:
+        raise ConnectionError("handshake failed")
+
+    monkeypatch.setattr(listen, "open_deepgram", _refuse)
+    caplog.set_level(logging.INFO, logger="voroute.voline")
+    asyncio.run(listen.listen_turn(object(), job.job_id))  # type: ignore[arg-type]
+    assert "speech=deepgram-open" in caplog.text
+    assert "error=ConnectionError" in caplog.text
+    assert "detail=handshake failed" in caplog.text
+    assert "speech=midstream" not in caplog.text
+
+    class _Drop:
+        async def receive_text(self) -> str:
+            raise WebSocketDisconnect(code=1006)
+
+    class _Silent:
+        def __aiter__(self) -> "_Silent":
+            return self
+
+        async def __anext__(self) -> str:
+            await asyncio.sleep(30)
+            raise StopAsyncIteration
+
+        async def send(self, _data: object) -> None:
+            return None
+
+    class _Open:
+        async def __aenter__(self) -> _Silent:
+            return _Silent()
+
+        async def __aexit__(self, *_args: object) -> bool:
+            return False
+
+    monkeypatch.setattr(listen, "open_deepgram", lambda: _Open())
+    monkeypatch.setattr(listen, "LISTEN_CAP_S", 0.2)
+    caplog.clear()
+    asyncio.run(listen.listen_turn(_Drop(), job.job_id))  # type: ignore[arg-type]
+    assert "speech=midstream pump=twilio" in caplog.text
+    assert "error=WebSocketDisconnect" in caplog.text
+    assert "close=1006" in caplog.text
+    assert "speech=deepgram-open" not in caplog.text
 
 
 def test_media_stream_plays_through_to_a_confirmed_hangup(

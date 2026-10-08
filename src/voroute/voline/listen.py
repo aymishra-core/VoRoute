@@ -119,16 +119,44 @@ async def confirmation_stream(websocket: WebSocket, job_id: str) -> None:
             pass
 
 
+def _close_code(exc: BaseException) -> str:
+    """Close code from a Twilio or Deepgram socket error. n/a when there is none."""
+
+    for frame_name in ("rcvd", "sent"):
+        frame = getattr(exc, frame_name, None)
+        code = getattr(frame, "code", None)
+        if isinstance(code, int):
+            return str(code)
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return str(code)
+    return "n/a"
+
+
+def _log_socket(job_id: str, stage: str, exc: BaseException, pump: str = "") -> None:
+    logger.info(
+        "job_id=%s speech=%s pump=%s error=%s detail=%s close=%s",
+        job_id,
+        stage,
+        pump or "-",
+        type(exc).__name__,
+        exc,
+        _close_code(exc),
+    )
+
+
 async def listen_turn(websocket: WebSocket, job_id: str) -> None:
     text = ""
     confidence: float | None = None
+    opened = False
     try:
         if not settings.deepgram_api_key.strip():
             raise RuntimeError("DEEPGRAM_API_KEY is not set")
         async with open_deepgram() as deepgram:
-            text, confidence = await _one_utterance(websocket, deepgram)
+            opened = True
+            text, confidence = await _one_utterance(websocket, deepgram, job_id)
     except Exception as exc:
-        logger.info("job_id=%s speech=unclear reason=%s", job_id, exc)
+        _log_socket(job_id, "midstream" if opened else "deepgram-open", exc)
         text = ""
         confidence = None
     verdict = classify(text, confidence)
@@ -142,7 +170,9 @@ async def listen_turn(websocket: WebSocket, job_id: str) -> None:
     )
 
 
-async def _one_utterance(websocket: WebSocket, deepgram: Any) -> tuple[str, float | None]:
+async def _one_utterance(
+    websocket: WebSocket, deepgram: Any, job_id: str
+) -> tuple[str, float | None]:
     finals: list[str] = []
     scores: list[float] = []
     events: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
@@ -158,14 +188,16 @@ async def _one_utterance(websocket: WebSocket, deepgram: Any) -> tuple[str, floa
                     continue
                 if isinstance(message, dict):
                     await events.put(message)
-        except Exception:
+        except Exception as exc:
+            _log_socket(job_id, "midstream", exc, pump="twilio")
             await events.put({"event": "stop"})
 
     async def pump_deepgram() -> None:
         try:
             async for raw in deepgram:
                 await events.put({"event": "deepgram", "raw": raw})
-        except Exception:
+        except Exception as exc:
+            _log_socket(job_id, "midstream", exc, pump="deepgram")
             await events.put({"event": "stop"})
 
     twilio_task = asyncio.create_task(pump_twilio())

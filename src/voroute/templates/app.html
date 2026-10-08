@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — VoRoute{% endblock %}
+{% block header_extra %}{% include "logout.html" %}{% endblock %}
+{% block body %}
+<p class="kicker">Orders</p>
+<h1>Dashboard</h1>
+<div class="strip" aria-label="Call counts">
+  <div><b data-count="confirmed">{{ dashboard.counts.confirmed }}</b><span>Confirmed</span></div>
+  <div><b data-count="declined">{{ dashboard.counts.declined }}</b><span>Declined</span></div>
+  <div><b data-count="unclear">{{ dashboard.counts.unclear }}</b><span>Unclear</span></div>
+  <div><b data-count="in_progress">{{ dashboard.counts.in_progress }}</b><span>In progress</span></div>
+  <div><b data-count="failed">{{ dashboard.counts.failed }}</b><span>Failed</span></div>
+</div>
+{% if dashboard.decline_share is not none %}
+<p class="share">Decline share {{ "%.1f"|format(dashboard.decline_share * 100) }}%</p>
+{% endif %}
+{% if dashboard.orders %}
+<table class="sheet">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Order</th>
+      <th>Customer</th>
+      <th>Phone</th>
+      <th>Amount</th>
+      <th>Status</th>
+      <th>Capture</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for order in dashboard.orders %}
+    <tr>
+      <td class="mono">{{ order.created_at | when }}</td>
+      <td class="mono"><a href="/app/orders/{{ order.order_id }}">{{ order.external_order_id }}</a></td>
+      <td>{{ order.customer_name }}</td>
+      <td class="mono">{{ order.phone }}</td>
+      <td class="mono">{{ order.amount | inr }}</td>
+      <td>{{ order.status }}</td>
+      <td>{{ order.capture_path }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No orders yet.</p>
+{% endif %}
+{% endblock %}

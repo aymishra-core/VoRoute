@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ order.external_order_id }} — VoRoute{% endblock %}
+{% block header_extra %}{% include "logout.html" %}{% endblock %}
+{% block body %}
+<p class="kicker">Order</p>
+<h1>{{ order.external_order_id }}</h1>
+<dl class="fields">
+  <div><dt>Time</dt><dd class="mono">{{ order.created_at | when }}</dd></div>
+  <div><dt>Customer</dt><dd>{{ order.customer_name }}</dd></div>
+  <div><dt>Phone</dt><dd class="mono">{{ order.phone }}</dd></div>
+  <div><dt>Amount</dt><dd class="mono">{{ order.amount | inr }}</dd></div>
+  <div><dt>Status</dt><dd>{{ order.status }}</dd></div>
+  <div><dt>Capture</dt><dd>{{ order.capture_path }}</dd></div>
+</dl>
+<a class="back" href="/app">Dashboard</a>
+{% endblock %}

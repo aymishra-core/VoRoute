@@ -2,6 +2,7 @@
 
 import hashlib
 from collections.abc import Callable
+from datetime import datetime
 from typing import NamedTuple
 from uuid import uuid4
 
@@ -137,6 +138,218 @@ def account_counts() -> tuple[int, int]:
         merchants = session.scalar(select(func.count()).select_from(MerchantRow))
         users = session.scalar(select(func.count()).select_from(UserRow))
         return int(merchants or 0), int(users or 0)
+
+
+class MerchantCounts(NamedTuple):
+    confirmed: int
+    declined: int
+    unclear: int
+    in_progress: int
+    failed: int
+
+
+class OrderListItem(NamedTuple):
+    created_at: datetime
+    external_order_id: str
+    customer_name: str
+    phone: str
+    amount: float
+    status: str
+    capture_path: str
+    order_id: str
+    job_id: str | None
+
+
+class Dashboard(NamedTuple):
+    counts: MerchantCounts
+    decline_share: float | None
+    orders: list[OrderListItem]
+
+
+class OrderDetail(NamedTuple):
+    order_id: str
+    external_order_id: str
+    customer_name: str
+    phone: str
+    amount: float
+    created_at: datetime
+    status: str
+    capture_path: str
+    job_id: str | None
+
+
+class JobDetail(NamedTuple):
+    job_id: str
+    order_id: str
+    external_order_id: str
+    customer_name: str
+    phone: str
+    amount: float
+    status: str
+    capture_path: str
+    created_at: datetime
+
+
+_RECENT_LIMIT = 50
+_IN_PROGRESS = {JobStatus.PENDING.value, JobStatus.CALLING.value}
+_FAILED = {JobStatus.FAILED.value, JobStatus.MAX_RETRIES.value}
+
+
+def dashboard_for(merchant_id: str) -> Dashboard:
+    """Counts and the newest orders for one merchant."""
+
+    with _session() as session:
+        counts = _merchant_counts(session, merchant_id)
+        orders = _recent_orders(session, merchant_id)
+    return Dashboard(
+        counts=counts,
+        decline_share=_decline_share(counts.confirmed, counts.declined),
+        orders=orders,
+    )
+
+
+def order_for_merchant(merchant_id: str, order_id: str) -> OrderDetail | None:
+    """One order when the id and the merchant both match."""
+
+    with _session() as session:
+        order = session.scalar(
+            select(OrderRow).where(
+                OrderRow.id == order_id,
+                OrderRow.merchant_id == merchant_id,
+            )
+        )
+        if order is None:
+            return None
+        job = _latest_job(session, merchant_id, order.id)
+        return _order_detail(order, job)
+
+
+def job_for_merchant(merchant_id: str, job_id: str) -> JobDetail | None:
+    """One job when the id and the merchant both match."""
+
+    with _session() as session:
+        job = session.scalar(
+            select(JobRow).where(
+                JobRow.id == job_id,
+                JobRow.merchant_id == merchant_id,
+            )
+        )
+        if job is None:
+            return None
+        order = session.scalar(
+            select(OrderRow).where(
+                OrderRow.id == job.order_id,
+                OrderRow.merchant_id == merchant_id,
+            )
+        )
+        if order is None:
+            return None
+        return _job_detail(job, order)
+
+
+def _merchant_counts(session: Session, merchant_id: str) -> MerchantCounts:
+    rows = session.execute(
+        select(JobRow.status, func.count())
+        .where(JobRow.merchant_id == merchant_id)
+        .group_by(JobRow.status)
+    ).all()
+    tally = {status: int(count) for status, count in rows}
+    return MerchantCounts(
+        confirmed=tally.get(JobStatus.CONFIRMED.value, 0),
+        declined=tally.get(JobStatus.DECLINED.value, 0),
+        unclear=tally.get(JobStatus.UNCLEAR.value, 0),
+        in_progress=sum(tally.get(status, 0) for status in _IN_PROGRESS),
+        failed=sum(tally.get(status, 0) for status in _FAILED),
+    )
+
+
+def _recent_orders(session: Session, merchant_id: str) -> list[OrderListItem]:
+    orders = session.scalars(
+        select(OrderRow)
+        .where(OrderRow.merchant_id == merchant_id)
+        .order_by(OrderRow.created_at.desc())
+        .limit(_RECENT_LIMIT)
+    ).all()
+    if not orders:
+        return []
+    jobs = session.scalars(
+        select(JobRow).where(
+            JobRow.merchant_id == merchant_id,
+            JobRow.order_id.in_([order.id for order in orders]),
+        )
+    ).all()
+    latest: dict[str, JobRow] = {}
+    for job in jobs:
+        current = latest.get(job.order_id)
+        if current is None or _job_rank(job) >= _job_rank(current):
+            latest[job.order_id] = job
+    return [_list_item(order, latest.get(order.id)) for order in orders]
+
+
+def _latest_job(session: Session, merchant_id: str, order_id: str) -> JobRow | None:
+    jobs = session.scalars(
+        select(JobRow).where(
+            JobRow.merchant_id == merchant_id,
+            JobRow.order_id == order_id,
+        )
+    ).all()
+    if not jobs:
+        return None
+    return max(jobs, key=_job_rank)
+
+
+def _decline_share(confirmed: int, declined: int) -> float | None:
+    decisive = confirmed + declined
+    if decisive == 0:
+        return None
+    return declined / decisive
+
+
+def _job_rank(job: JobRow) -> tuple[datetime, str]:
+    updated = job.updated_at if isinstance(job.updated_at, datetime) else datetime.min
+    return updated, job.id
+
+
+def _list_item(order: OrderRow, job: JobRow | None) -> OrderListItem:
+    return OrderListItem(
+        created_at=order.created_at,
+        external_order_id=order.external_order_id,
+        customer_name=order.customer_name,
+        phone=order.phone,
+        amount=order.amount,
+        status="" if job is None else job.status,
+        capture_path="" if job is None else job.capture_path,
+        order_id=order.id,
+        job_id=None if job is None else job.id,
+    )
+
+
+def _order_detail(order: OrderRow, job: JobRow | None) -> OrderDetail:
+    return OrderDetail(
+        order_id=order.id,
+        external_order_id=order.external_order_id,
+        customer_name=order.customer_name,
+        phone=order.phone,
+        amount=order.amount,
+        created_at=order.created_at,
+        status="" if job is None else job.status,
+        capture_path="" if job is None else job.capture_path,
+        job_id=None if job is None else job.id,
+    )
+
+
+def _job_detail(job: JobRow, order: OrderRow) -> JobDetail:
+    return JobDetail(
+        job_id=job.id,
+        order_id=order.id,
+        external_order_id=order.external_order_id,
+        customer_name=order.customer_name,
+        phone=order.phone,
+        amount=order.amount,
+        status=job.status,
+        capture_path=job.capture_path,
+        created_at=job.created_at,
+    )
 
 
 def create_pending(merchant_id: str, order: Order) -> ConfirmationJob:

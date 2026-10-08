@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c0d0c">
+  <title>{% block title %}VoRoute{% endblock %}</title>
+  <link rel="stylesheet" href="/static/cockpit.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="wordmark" href="/app">VOROUTE</a>
+      {% block header_extra %}{% endblock %}
+    </header>
+    <main class="doc">
+      {% block body %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

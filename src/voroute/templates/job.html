@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Job — VoRoute{% endblock %}
+{% block header_extra %}{% include "logout.html" %}{% endblock %}
+{% block body %}
+<p class="kicker">Job</p>
+<h1>{{ job.external_order_id }}</h1>
+<dl class="fields">
+  <div><dt>Time</dt><dd class="mono">{{ job.created_at | when }}</dd></div>
+  <div><dt>Customer</dt><dd>{{ job.customer_name }}</dd></div>
+  <div><dt>Phone</dt><dd class="mono">{{ job.phone }}</dd></div>
+  <div><dt>Amount</dt><dd class="mono">{{ job.amount | inr }}</dd></div>
+  <div><dt>Status</dt><dd>{{ job.status }}</dd></div>
+  <div><dt>Capture</dt><dd>{{ job.capture_path }}</dd></div>
+</dl>
+<a class="back" href="/app">Dashboard</a>
+{% endblock %}

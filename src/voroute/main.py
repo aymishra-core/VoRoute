@@ -4,10 +4,14 @@ import hashlib
 import hmac
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.staticfiles import StaticFiles
+from starlette.templating import Jinja2Templates
 
 from voroute.auth import (
     AuthError,
@@ -16,18 +20,43 @@ from voroute.auth import (
     current_merchant_id,
     establish_session,
     issue_csrf,
-    login_form,
     require_session_secret,
     signup,
-    signup_form,
 )
 from voroute.config import settings
 from voroute.db import prepare_database
 from voroute.models import Order
-from voroute.store import DuplicateOrder, ensure_pilot_merchant, merchant_id_for_token
+from voroute.store import (
+    DuplicateOrder,
+    dashboard_for,
+    ensure_pilot_merchant,
+    job_for_merchant,
+    merchant_id_for_token,
+    order_for_merchant,
+)
 from voroute.voflow import enqueue
 from voroute.voline.listen import router as listen_router
 from voroute.voline.twiml import router as voice_router
+
+_PACKAGE = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=_PACKAGE / "templates")
+
+
+def _inr(amount: object) -> str:
+    number = float(amount)  # type: ignore[arg-type]
+    if number.is_integer():
+        return f"₹{int(number)}"
+    return f"₹{number:.2f}"
+
+
+def _when(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M")
+    return str(value)
+
+
+templates.env.filters["inr"] = _inr
+templates.env.filters["when"] = _when
 
 logger = logging.getLogger("voroute")
 logger.setLevel(logging.INFO)
@@ -54,6 +83,11 @@ def create_app() -> FastAPI:
         same_site="lax",
         https_only=True,
     )
+    application.mount(
+        "/static",
+        StaticFiles(directory=_PACKAGE / "static"),
+        name="static",
+    )
     application.include_router(voice_router)
     application.include_router(listen_router)
     _routes(application)
@@ -66,12 +100,62 @@ def _routes(application: FastAPI) -> None:
         return {"status": "ok", "service": "voroute"}
 
     @application.get("/login", response_class=HTMLResponse)
-    def show_login(request: Request) -> str:
-        return login_form(issue_csrf(request.session))
+    def show_login(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"csrf_token": issue_csrf(request.session)},
+        )
 
     @application.get("/signup", response_class=HTMLResponse)
-    def show_signup(request: Request) -> str:
-        return signup_form(issue_csrf(request.session))
+    def show_signup(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request,
+            "signup.html",
+            {"csrf_token": issue_csrf(request.session)},
+        )
+
+    @application.get("/app")
+    def dashboard(request: Request) -> HTMLResponse:
+        merchant_id = _merchant_or_login(request)
+        if not isinstance(merchant_id, str):
+            return merchant_id
+        return templates.TemplateResponse(
+            request,
+            "app.html",
+            {
+                "dashboard": dashboard_for(merchant_id),
+                "csrf_token": request.session.get("csrf_token", ""),
+            },
+        )
+
+    @application.get("/app/orders/{order_id}")
+    def order_page(request: Request, order_id: str) -> HTMLResponse:
+        merchant_id = _merchant_or_login(request)
+        if not isinstance(merchant_id, str):
+            return merchant_id
+        order = order_for_merchant(merchant_id, order_id)
+        if order is None:
+            return _not_found(request)
+        return templates.TemplateResponse(
+            request,
+            "order.html",
+            {"order": order, "csrf_token": request.session.get("csrf_token", "")},
+        )
+
+    @application.get("/app/jobs/{job_id}")
+    def job_page(request: Request, job_id: str) -> HTMLResponse:
+        merchant_id = _merchant_or_login(request)
+        if not isinstance(merchant_id, str):
+            return merchant_id
+        job = job_for_merchant(merchant_id, job_id)
+        if job is None:
+            return _not_found(request)
+        return templates.TemplateResponse(
+            request,
+            "job.html",
+            {"job": job, "csrf_token": request.session.get("csrf_token", "")},
+        )
 
     @application.post("/signup")
     def create_account(
@@ -131,6 +215,19 @@ def _routes(application: FastAPI) -> None:
         except DuplicateOrder:
             raise HTTPException(status_code=409, detail="order already queued") from None
         return {"status": "queued", "order_id": order.order_id}
+
+
+def _merchant_or_login(request: Request) -> str | HTMLResponse:
+    merchant_id = current_merchant_id(request.session)
+    if merchant_id is None:
+        return RedirectResponse("/login", status_code=302)
+    return merchant_id
+
+
+def _not_found(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request, "not_found.html", status_code=404
+    )
 
 
 def _presented_bearer(authorization: str | None) -> str:

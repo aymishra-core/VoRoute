@@ -35,6 +35,12 @@ def _csrf(html: str) -> str:
     return match.group(1)
 
 
+def _api_token(html: str) -> str:
+    match = re.search(r'id="api-token" type="text" readonly value="([^"]+)"', html)
+    assert match is not None
+    return match.group(1)
+
+
 def _open(client: TestClient, path: str) -> str:
     response = client.get(path)
     assert response.status_code == 200
@@ -81,18 +87,35 @@ def test_signup_stores_a_lowercase_email_and_an_argon2_hash(
     before = account_counts()
     response = _signup(client, email="Owner@Shop.Example")
     assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "ok"
-    assert PASSWORD not in response.text
+    assert "text/html" in response.headers["content-type"]
+    html = response.text
+    assert "Account created" in html
+    assert "shown only once" in html
+    assert "application/json" not in response.headers["content-type"]
+    api_token = _api_token(html)
+    assert html.count(api_token) == 2
+    assert f"Authorization: Bearer {api_token}" in html
+    assert PASSWORD not in html
     assert PASSWORD not in caplog.text
+    assert api_token not in caplog.text
     user = find_user_by_email("owner@shop.example")
     assert user is not None
     assert user.email == "owner@shop.example"
     assert user.password_hash.startswith("$argon2id$")
     assert user.password_hash != PASSWORD
     assert user.password_hash not in caplog.text
-    assert token_hash(body["api_token"]) == merchant_api_token_hash(user.merchant_id)
-    assert body["api_token"] not in (merchant_api_token_hash(user.merchant_id) or "")
+    stored = merchant_api_token_hash(user.merchant_id) or ""
+    assert token_hash(api_token) == stored
+    assert api_token not in stored
+    cookie = client.cookies.get("voroute_session")
+    assert cookie is not None
+    assert api_token not in cookie
+    assert set(_read_session(cookie)) == {"user_id", "csrf_token"}
+    dashboard = client.get("/app")
+    login = client.get("/login")
+    assert api_token not in dashboard.text
+    assert api_token not in login.text
+    assert "API token was shown at signup." in dashboard.text
     merchants, users = account_counts()
     assert (merchants, users) == (before[0] + 1, before[1] + 1)
 
@@ -219,7 +242,7 @@ def test_state_changing_posts_require_the_csrf_token(client: TestClient) -> None
 def test_modified_cookie_does_not_authenticate(client: TestClient) -> None:
     created = _signup(client)
     assert created.status_code == 200
-    csrf = created.json()["csrf_token"]
+    csrf = _csrf(created.text)
     original = client.cookies.get("voroute_session")
     assert original is not None
     parts = original.split(".")
@@ -236,7 +259,7 @@ def test_modified_cookie_does_not_authenticate(client: TestClient) -> None:
 def test_forged_cookie_signature_does_not_authenticate(client: TestClient) -> None:
     created = _signup(client)
     assert created.status_code == 200
-    csrf = created.json()["csrf_token"]
+    csrf = _csrf(created.text)
     user = find_user_by_email(EMAIL)
     assert user is not None
     signer = TimestampSigner("not-the-real-session-secret-value!!")
@@ -254,7 +277,7 @@ def test_forged_cookie_signature_does_not_authenticate(client: TestClient) -> No
 def test_logout_clears_the_session(client: TestClient) -> None:
     created = _signup(client)
     assert created.status_code == 200
-    csrf = created.json()["csrf_token"]
+    csrf = _csrf(created.text)
     bad = client.post("/logout", data={"csrf_token": "nope"})
     assert bad.status_code == 403
     first = client.post("/logout", data={"csrf_token": csrf})

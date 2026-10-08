@@ -157,14 +157,14 @@ def _routes(application: FastAPI) -> None:
             {"job": job, "csrf_token": request.session.get("csrf_token", "")},
         )
 
-    @application.post("/signup")
+    @application.post("/signup", response_class=HTMLResponse)
     def create_account(
         request: Request,
         brand_name: str = Form(""),
         email: str = Form(""),
         password: str = Form(""),
         csrf_token: str = Form(""),
-    ) -> dict[str, str]:
+    ) -> HTMLResponse:
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
             raise HTTPException(status_code=403, detail="csrf failed")
         try:
@@ -172,7 +172,11 @@ def _routes(application: FastAPI) -> None:
         except AuthError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
         rotated = establish_session(request.session, user_id)
-        return {"status": "ok", "api_token": api_token, "csrf_token": rotated}
+        return templates.TemplateResponse(
+            request,
+            "created.html",
+            {"api_token": api_token, "csrf_token": rotated},
+        )
 
     @application.post("/login")
     def log_in(

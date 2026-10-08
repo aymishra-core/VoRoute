@@ -37,9 +37,9 @@ def _signup(client: TestClient, email: str, brand: str) -> str:
         },
     )
     assert created.status_code == 200
-    api_token = created.json()["api_token"]
-    assert isinstance(api_token, str)
-    return api_token
+    match = re.search(r'id="api-token" type="text" readonly value="([^"]+)"', created.text)
+    assert match is not None
+    return match.group(1)
 
 
 def _queue(

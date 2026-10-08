@@ -99,7 +99,12 @@ def test_signup_token_queues_for_that_merchant(monkeypatch: pytest.MonkeyPatch) 
         },
     )
     assert created.status_code == 200
-    api_token = created.json()["api_token"]
+    assert "text/html" in created.headers["content-type"]
+    token_match = re.search(
+        r'id="api-token" type="text" readonly value="([^"]+)"', created.text
+    )
+    assert token_match is not None
+    api_token = token_match.group(1)
     payload = {**VALID_ORDER, "order_id": "ORD-SHOP", "merchant_id": "someone-else"}
     response = secure.post(
         "/orders",

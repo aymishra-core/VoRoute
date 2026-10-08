@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Account created — VoRoute{% endblock %}
+{% block header_extra %}{% include "logout.html" %}{% endblock %}
+{% block body %}
+<p class="kicker">Account</p>
+<h1>Account created</h1>
+<p class="warn">Save this now — it's shown only once and can't be retrieved later.</p>
+<div class="token">
+  <input id="api-token" type="text" readonly value="{{ api_token }}">
+  <button type="button" id="copy-token">Copy</button>
+</div>
+<h2>How to send orders</h2>
+<p class="lede">POST <span class="mono">https://voroute.onrender.com/orders</span></p>
+<p class="lede">Header <span class="mono">Authorization: Bearer</span> and this JSON body: <span class="mono">order_id</span>, <span class="mono">customer_name</span>, <span class="mono">phone</span> (+91 E.164), <span class="mono">amount</span>, <span class="mono">cod: true</span>.</p>
+<pre class="example">curl -X POST https://voroute.onrender.com/orders \
+  -H "Authorization: Bearer {{ api_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{"order_id":"ORD-1001","customer_name":"Asha","phone":"+919876543210","amount":499,"cod":true}'</pre>
+<p class="lede"><a href="/app">Go to dashboard</a></p>
+<script>
+document.getElementById("copy-token").addEventListener("click", function () {
+  var field = document.getElementById("api-token");
+  var button = document.getElementById("copy-token");
+  field.select();
+  var done = function () { button.textContent = "Copied"; };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(field.value).then(done).catch(function () {
+      document.execCommand("copy");
+      done();
+    });
+    return;
+  }
+  document.execCommand("copy");
+  done();
+});
+</script>
+{% endblock %}

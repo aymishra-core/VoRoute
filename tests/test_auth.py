@@ -224,24 +224,41 @@ def test_short_session_secret_refuses_to_boot(monkeypatch: pytest.MonkeyPatch) -
         create_app()
 
 
+_CSRF_PAGE = (
+    "Your form session expired or the request was duplicated. "
+    "Please go back and try again."
+)
+
+
+def _assert_csrf_page(response: object, href: str) -> None:
+    assert response.status_code == 403  # type: ignore[attr-defined]
+    assert "text/html" in response.headers["content-type"]  # type: ignore[attr-defined]
+    assert "application/json" not in response.headers["content-type"]  # type: ignore[attr-defined]
+    text = response.text  # type: ignore[attr-defined]
+    assert _CSRF_PAGE in text
+    assert f'href="{href}"' in text
+    assert '{"detail":"csrf failed"}' not in text
+
+
 def test_state_changing_posts_require_the_csrf_token(client: TestClient) -> None:
     before = account_counts()
     missing = client.post(
         "/signup",
         data={"brand_name": "Shop", "email": EMAIL, "password": PASSWORD},
     )
-    assert missing.status_code == 403
-    assert missing.json() == {"detail": "csrf failed"}
+    _assert_csrf_page(missing, "/login")
     assert account_counts() == before
+    assert find_user_by_email(EMAIL) is None
     token = _open(client, "/login")
     wrong = client.post(
         "/login",
         data={"email": EMAIL, "password": PASSWORD, "csrf_token": "not-the-token"},
     )
-    assert wrong.status_code == 403
-    assert wrong.json() == {"detail": "csrf failed"}
+    _assert_csrf_page(wrong, "/login")
+    assert find_user_by_email(EMAIL) is None
     logged_out = client.post("/logout", data={"csrf_token": token})
     assert logged_out.status_code == 401
+    assert logged_out.json() == {"detail": "unauthorized"}
 
 
 def test_modified_cookie_does_not_authenticate(client: TestClient) -> None:
@@ -284,7 +301,8 @@ def test_logout_clears_the_session(client: TestClient) -> None:
     assert created.status_code == 200
     csrf = _csrf(created.text)
     bad = client.post("/logout", data={"csrf_token": "nope"})
-    assert bad.status_code == 403
+    _assert_csrf_page(bad, "/app")
+    assert client.cookies.get("voroute_session")
     first = client.post("/logout", data={"csrf_token": csrf})
     assert first.status_code == 200
     header = _cookie_header(first)
@@ -299,6 +317,49 @@ _ORDER = {
     "amount": 499.0,
     "cod": True,
 }
+
+
+def test_replayed_csrf_token_is_rejected(client: TestClient) -> None:
+    form = client.get("/signup")
+    token = _csrf(form.text)
+    before = account_counts()
+    created = client.post(
+        "/signup",
+        data={
+            "brand_name": "Shop",
+            "email": EMAIL,
+            "password": PASSWORD,
+            "csrf_token": token,
+        },
+    )
+    assert created.status_code == 200
+    assert "Account created" in created.text
+    replay = client.post(
+        "/signup",
+        data={
+            "brand_name": "Other",
+            "email": "other@shop.example",
+            "password": PASSWORD,
+            "csrf_token": token,
+        },
+    )
+    _assert_csrf_page(replay, "/app")
+    assert account_counts() == (before[0] + 1, before[1] + 1)
+    assert find_user_by_email("other@shop.example") is None
+    cookie = client.cookies.get("voroute_session")
+    assert cookie is not None
+    assert set(_read_session(cookie)) == {"user_id", "csrf_token"}
+
+
+def test_orders_bad_key_stays_json(client: TestClient) -> None:
+    response = client.post(
+        "/orders",
+        json={**_ORDER, "order_id": "ORD-BAD-KEY"},
+        headers={"Authorization": "Bearer not-a-real-token"},
+    )
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json() == {"detail": "unauthorized"}
 
 
 def test_regenerate_without_a_session_redirects_to_login(client: TestClient) -> None:
@@ -320,10 +381,8 @@ def test_regenerate_rejects_a_bad_csrf_token(client: TestClient) -> None:
     wrong = client.post(
         "/app/regenerate-token", data={"csrf_token": "not-the-token"}
     )
-    assert missing.status_code == 403
-    assert wrong.status_code == 403
-    assert missing.json() == {"detail": "csrf failed"}
-    assert wrong.json() == missing.json()
+    _assert_csrf_page(missing, "/app")
+    _assert_csrf_page(wrong, "/app")
     assert merchant_api_token_hash(user.merchant_id) == before
     assert _api_token(created.text) not in missing.text
 

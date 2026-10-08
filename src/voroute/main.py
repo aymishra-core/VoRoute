@@ -167,7 +167,7 @@ def _routes(application: FastAPI) -> None:
         csrf_token: str = Form(""),
     ) -> HTMLResponse:
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
-            raise HTTPException(status_code=403, detail="csrf failed")
+            return _csrf_failed(request)
         try:
             user_id, _merchant_id, api_token = signup(brand_name, email, password)
         except AuthError as exc:
@@ -191,7 +191,7 @@ def _routes(application: FastAPI) -> None:
         if not isinstance(merchant_id, str):
             return merchant_id
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
-            raise HTTPException(status_code=403, detail="csrf failed")
+            return _csrf_failed(request)
         try:
             api_token = regenerate_api_token(merchant_id)
         except AuthError as exc:
@@ -207,27 +207,27 @@ def _routes(application: FastAPI) -> None:
             },
         )
 
-    @application.post("/login")
+    @application.post("/login", response_model=None)
     def log_in(
         request: Request,
         email: str = Form(""),
         password: str = Form(""),
         csrf_token: str = Form(""),
-    ) -> dict[str, str]:
+    ) -> HTMLResponse | dict[str, str]:
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
-            raise HTTPException(status_code=403, detail="csrf failed")
+            return _csrf_failed(request)
         user_id = authenticate(email, password)
         if user_id is None:
             raise HTTPException(status_code=401, detail="email or password is wrong")
         rotated = establish_session(request.session, user_id)
         return {"status": "ok", "csrf_token": rotated}
 
-    @application.post("/logout")
-    def log_out(request: Request, csrf_token: str = Form("")) -> dict[str, str]:
+    @application.post("/logout", response_model=None)
+    def log_out(request: Request, csrf_token: str = Form("")) -> HTMLResponse | dict[str, str]:
         if current_merchant_id(request.session) is None:
             raise HTTPException(status_code=401, detail="unauthorized")
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
-            raise HTTPException(status_code=403, detail="csrf failed")
+            return _csrf_failed(request)
         request.session.clear()
         return {"status": "ok"}
 
@@ -260,6 +260,19 @@ def _merchant_or_login(request: Request) -> str | HTMLResponse:
 def _not_found(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request, "not_found.html", status_code=404
+    )
+
+
+def _csrf_failed(request: Request) -> HTMLResponse:
+    signed_in = current_merchant_id(request.session) is not None
+    return templates.TemplateResponse(
+        request,
+        "csrf.html",
+        {
+            "next_href": "/app" if signed_in else "/login",
+            "next_label": "Go to dashboard" if signed_in else "Log in",
+        },
+        status_code=403,
     )
 
 

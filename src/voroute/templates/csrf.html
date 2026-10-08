@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Try again — VoRoute{% endblock %}
+{% block body %}
+<p class="kicker">Account</p>
+<p class="lede">Your form session expired or the request was duplicated. Please go back and try again.</p>
+<p class="lede"><a href="{{ next_href }}">{{ next_label }}</a></p>
+{% endblock %}

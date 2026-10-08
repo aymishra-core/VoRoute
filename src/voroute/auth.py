@@ -13,9 +13,11 @@ from voroute.store import (
     PILOT_NAME,
     DuplicateEmail,
     DuplicateToken,
+    TokenReplaceRefused,
     create_account,
     find_user_by_email,
     find_user_by_id,
+    replace_api_token_hash,
     token_hash,
 )
 
@@ -97,6 +99,21 @@ def signup(brand_name: str, email: str, password: str) -> tuple[str, str, str]:
             continue
         return user_id, merchant_id, api_token
     raise AuthError("could not create the account", 500)
+
+
+def regenerate_api_token(merchant_id: str) -> str:
+    """Mint a new intake token and overwrite this merchant's stored hash."""
+
+    for _ in range(2):
+        api_token = secrets.token_urlsafe(32)
+        try:
+            replace_api_token_hash(merchant_id, token_hash(api_token))
+        except DuplicateToken:
+            continue
+        except TokenReplaceRefused as exc:
+            raise AuthError("cannot replace this token", 403) from exc
+        return api_token
+    raise AuthError("could not replace the token", 500)
 
 
 def authenticate(email: str, password: str) -> str | None:

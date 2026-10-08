@@ -35,6 +35,10 @@ class DuplicateToken(Exception):
     """The generated intake-token hash collided. The caller retries once."""
 
 
+class TokenReplaceRefused(Exception):
+    """This merchant's intake-token hash cannot be replaced."""
+
+
 class StoredUser(NamedTuple):
     id: str
     merchant_id: str
@@ -124,6 +128,23 @@ def merchant_id_for_token(token: str) -> str | None:
         if found is None or found.name == PILOT_NAME:
             return None
         return found.id
+
+
+def replace_api_token_hash(merchant_id: str, api_token_hash: str) -> None:
+    """Overwrite one merchant's intake-token hash. The pilot row is left alone."""
+
+    with _session() as session:
+        row = session.get(MerchantRow, merchant_id)
+        if row is None or row.name == PILOT_NAME:
+            raise TokenReplaceRefused
+        row.api_token_hash = api_token_hash
+        try:
+            session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            if "api_token_hash" in str(exc.orig) or "UNIQUE" in str(exc).upper():
+                raise DuplicateToken from exc
+            raise
 
 
 def merchant_api_token_hash(merchant_id: str) -> str | None:

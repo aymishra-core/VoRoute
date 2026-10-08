@@ -5,6 +5,11 @@
 <p class="kicker">Orders</p>
 <h1>Dashboard</h1>
 <p class="lede">API token was shown at signup.</p>
+<form method="post" action="/app/regenerate-token">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <p class="warn">This invalidates your current token. You'll need to update your integration.</p>
+  <button type="submit">Regenerate API token</button>
+</form>
 <div class="strip" aria-label="Call counts">
   <div><b data-count="confirmed">{{ dashboard.counts.confirmed }}</b><span>Confirmed</span></div>
   <div><b data-count="declined">{{ dashboard.counts.declined }}</b><span>Declined</span></div>

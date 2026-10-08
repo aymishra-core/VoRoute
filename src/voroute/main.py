@@ -20,6 +20,7 @@ from voroute.auth import (
     current_merchant_id,
     establish_session,
     issue_csrf,
+    regenerate_api_token,
     require_session_secret,
     signup,
 )
@@ -175,7 +176,35 @@ def _routes(application: FastAPI) -> None:
         return templates.TemplateResponse(
             request,
             "created.html",
-            {"api_token": api_token, "csrf_token": rotated},
+            {
+                "api_token": api_token,
+                "csrf_token": rotated,
+                "heading": "Account created",
+            },
+        )
+
+    @application.post("/app/regenerate-token", response_class=HTMLResponse)
+    def regenerate_token(
+        request: Request, csrf_token: str = Form("")
+    ) -> HTMLResponse:
+        merchant_id = _merchant_or_login(request)
+        if not isinstance(merchant_id, str):
+            return merchant_id
+        if not csrf_ok(request.session.get("csrf_token"), csrf_token):
+            raise HTTPException(status_code=403, detail="csrf failed")
+        try:
+            api_token = regenerate_api_token(merchant_id)
+        except AuthError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+        rotated = issue_csrf(request.session)
+        return templates.TemplateResponse(
+            request,
+            "created.html",
+            {
+                "api_token": api_token,
+                "csrf_token": rotated,
+                "heading": "New API token",
+            },
         )
 
     @application.post("/login")

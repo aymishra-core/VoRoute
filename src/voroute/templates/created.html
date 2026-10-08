@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Account created — VoRoute{% endblock %}
+{% block title %}{{ heading }} — VoRoute{% endblock %}
 {% block header_extra %}{% include "logout.html" %}{% endblock %}
 {% block body %}
 <p class="kicker">Account</p>
-<h1>Account created</h1>
+<h1>{{ heading }}</h1>
 <p class="warn">Save this now — it's shown only once and can't be retrieved later.</p>
 <div class="token">
   <input id="api-token" type="text" readonly value="{{ api_token }}">

@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="The VoRoute system blueprint: order intake, voflow, Twilio on voline, voice, and the call result.">
+  <meta name="description" content="This VoRoute page has moved.">
   <meta name="theme-color" content="#0c0d0c">
-  <title>Blueprint — VoRoute</title>
+  <title>Moved — VoRoute</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230c0d0c'/%3E%3Crect x='6' y='6' width='20' height='20' fill='none' stroke='%23c6f54e' stroke-width='1.5'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -13,62 +13,20 @@
   <div class="wrap">
     <header class="top">
       <a class="wordmark" href="/">VOROUTE</a>
-      <nav class="console-nav" aria-label="Console">
-        <a href="/blueprint/" aria-current="page">Blueprint</a>
-        <a href="/dashboard/">Dashboard</a>
-        <a href="/settings/">Settings</a>
+      <nav class="console-nav" aria-label="Site">
+        <a href="/calling/">Calling</a>
       </nav>
-      <p class="status"><span class="dot" aria-hidden="true"></span> In development</p>
+      <div class="actions">
+        <a class="login-link" href="https://voroute.onrender.com/login">Log in</a>
+        <a class="pilot" href="https://linkedin.com/in/aymishra01">Get a free pilot</a>
+      </div>
     </header>
 
     <main class="doc">
-      <p class="kicker">Container · until Twilio is connected</p>
-      <h1>Blueprint</h1>
-      <p class="lede">The whole confirmation path, in order. Voline is the open slot. Nothing below it dials until that slot is filled.</p>
-
-      <ol class="stack">
-        <li>
-          <span class="mod">01</span>
-          <div>
-            <h2>Order intake</h2>
-            <p>A store posts the COD order. The phone must be present and start with +.</p>
-          </div>
-          <span class="ready">Ready</span>
-        </li>
-        <li>
-          <span class="mod">02 · voflow</span>
-          <div>
-            <h2>Confirmation job</h2>
-            <p>Builds the Hinglish script, queues the job, and allows up to three attempts.</p>
-          </div>
-          <span class="ready">Ready</span>
-        </li>
-        <li>
-          <span class="mod">03 · voline</span>
-          <div>
-            <h2>Place the call</h2>
-            <p>Outbound call from the VoRoute number to the order’s phone. The spoken script is served back to the call.</p>
-          </div>
-          <span class="wait">Waiting on Twilio</span>
-        </li>
-        <li>
-          <span class="mod">04 · vocore</span>
-          <div>
-            <h2>Voice</h2>
-            <p>Speech to text, intent, then speech. Hindi and Hinglish. Not ported yet.</p>
-          </div>
-          <span class="ready">Later</span>
-        </li>
-        <li>
-          <span class="mod">05 · vowrap</span>
-          <div>
-            <h2>Result</h2>
-            <p>Confirmed, cancelled, address fix, or no answer. The store ships or holds from that.</p>
-          </div>
-          <span class="ready">Defined</span>
-        </li>
-      </ol>
-      <p class="note">This container is the system. Dashboard and settings read it. They do not open the Twilio slot.</p>
+      <p class="kicker">Blueprint</p>
+      <h1>This page has moved</h1>
+      <p class="lede">The system sketch is no longer on this site.</p>
+      <p class="lede"><a href="/">Back to VoRoute</a></p>
     </main>
 
     <footer>

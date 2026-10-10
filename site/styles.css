@@ -31,6 +31,10 @@ a:focus-visible {
   outline-offset: 3px;
 }
 
+.pilot:focus-visible {
+  outline-color: var(--ink);
+}
+
 .wrap {
   max-width: 980px;
   margin: 0 auto;
@@ -75,6 +79,56 @@ a:focus-visible {
 
 .console-nav a:hover,
 .console-nav a[aria-current="page"] { color: var(--phosphor); }
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 16px 18px;
+}
+
+.login-link {
+  color: var(--muted);
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.login-link:hover { color: var(--ink); }
+
+.pilot {
+  background: var(--phosphor);
+  color: var(--bg);
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+  padding: 8px 12px;
+}
+
+.pilot:hover { color: var(--bg); }
+
+.for {
+  margin: 18px 0 0;
+  max-width: 36rem;
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+
+.question {
+  margin: 22px 0 0;
+  max-width: 40rem;
+  padding: 16px;
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.close-cta { margin: 8px 0 0; }
 
 .status {
   display: inline-flex;

@@ -155,6 +155,61 @@ def test_other_merchants_order_and_job_are_not_found() -> None:
     assert PHONE_B not in missing.text
 
 
+def test_live_partial_counts_this_merchant_only() -> None:
+    alpha = _client()
+    beta = _client()
+    token_a = _signup(alpha, "live-a@shop.example", "Live A")
+    token_b = _signup(beta, "live-b@shop.example", "Live B")
+    _queue(alpha, token_a, "LIVE-A", PHONE_A, "Asha")
+    _queue(beta, token_b, "LIVE-B", PHONE_B, "Bina")
+    job_b = next(
+        row.job_id
+        for row in dashboard_for(find_user_by_email("live-b@shop.example").merchant_id).orders  # type: ignore[union-attr]
+        if row.phone == PHONE_B
+    )
+    assert job_b is not None
+    note_speech(job_b, "CONFIRMED", "haan")
+    apply_listen_result(job_b)
+
+    live = alpha.get("/app/live")
+    assert live.status_code == 200
+    assert "hx-redirect" not in {name.lower() for name in live.headers}
+    assert _count(live.text, "confirmed") == 0
+    assert _count(live.text, "in_progress") == 1
+    assert PHONE_A in live.text
+    assert "LIVE-A" in live.text
+    assert PHONE_B not in live.text
+    assert "LIVE-B" not in live.text
+    assert "API &amp; settings" not in live.text
+    assert "API & settings" not in live.text
+
+    user_b = find_user_by_email("live-b@shop.example")
+    assert user_b is not None
+    overridden = alpha.get(f"/app/live?merchant_id={user_b.merchant_id}")
+    assert overridden.status_code == 200
+    assert PHONE_A in overridden.text
+    assert PHONE_B not in overridden.text
+
+    other = beta.get("/app/live")
+    assert _count(other.text, "confirmed") == 1
+    assert PHONE_B in other.text
+    assert PHONE_A not in other.text
+
+
+def test_live_poll_without_a_session_sends_hx_redirect() -> None:
+    client = _client()
+    token = _signup(client, "live-out@shop.example", "Live Out")
+    _queue(client, token, "LIVE-OUT", PHONE_A, "Asha")
+    anonymous = _client()
+    response = anonymous.get("/app/live", follow_redirects=False)
+    assert response.status_code == 200
+    assert response.headers["hx-redirect"] == "/login"
+    assert "location" not in {name.lower() for name in response.headers}
+    assert PHONE_A not in response.text
+    assert "LIVE-OUT" not in response.text
+    assert "data-count" not in response.text
+
+
 def test_dashboard_routes_redirect_without_a_session() -> None:
     client = _client()
     for path in (

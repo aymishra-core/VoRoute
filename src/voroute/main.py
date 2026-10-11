@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -138,6 +138,17 @@ def _routes(application: FastAPI) -> None:
                 "dashboard": dashboard_for(merchant_id),
                 "csrf_token": request.session.get("csrf_token", ""),
             },
+        )
+
+    @application.get("/app/live", response_model=None)
+    def dashboard_live(request: Request) -> Response:
+        merchant_id = current_merchant_id(request.session)
+        if not isinstance(merchant_id, str):
+            return Response(status_code=200, headers={"HX-Redirect": "/login"})
+        return templates.TemplateResponse(
+            request,
+            "_dashboard_live.html",
+            {"dashboard": dashboard_for(merchant_id)},
         )
 
     @application.get("/app/orders/{order_id}")

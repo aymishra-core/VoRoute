@@ -37,6 +37,7 @@ from voroute.store import (
     order_for_merchant,
 )
 from voroute.voflow import enqueue
+from voroute.voflow.dispatcher import dispatch_due
 from voroute.voline.listen import router as listen_router
 from voroute.voline.twiml import router as voice_router
 
@@ -131,6 +132,7 @@ def _routes(application: FastAPI) -> None:
         merchant_id = _merchant_or_login(request)
         if not isinstance(merchant_id, str):
             return merchant_id
+        dispatch_due()
         return templates.TemplateResponse(
             request,
             "app.html",
@@ -145,6 +147,7 @@ def _routes(application: FastAPI) -> None:
         merchant_id = current_merchant_id(request.session)
         if not isinstance(merchant_id, str):
             return Response(status_code=200, headers={"HX-Redirect": "/login"})
+        dispatch_due()
         return templates.TemplateResponse(
             request,
             "_dashboard_live.html",

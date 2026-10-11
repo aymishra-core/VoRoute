@@ -14,6 +14,7 @@ from voroute.voflow.dispatcher import (
     apply_digits,
     apply_listen_result,
     apply_stream_error,
+    dispatch_due,
     get_job,
 )
 from voroute.voflow.script import build_closing
@@ -171,7 +172,8 @@ async def call_status(job_id: str, request: Request) -> Response:
     form = await _form(request)
     status = form.get("CallStatus", "")
     logger.info("job_id=%s voice=call-status status=%s", job_id, status or "n/a")
-    apply_call_ended(job_id, status)
+    apply_call_ended(job_id, status, form.get("CallSid", ""))
+    dispatch_due()
     return Response(status_code=204)
 
 

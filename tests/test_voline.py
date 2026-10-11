@@ -380,10 +380,7 @@ def test_dtmf_records_the_keypad_answer(
     assert stored.attempt_count == 0
 
 
-@pytest.mark.parametrize(
-    "call_status",
-    ["completed", "busy", "no-answer", "failed", "canceled"],
-)
+@pytest.mark.parametrize("call_status", ["completed", "canceled"])
 def test_terminal_call_status_resolves_a_calling_job_to_unclear(
     call_status: str,
 ) -> None:
@@ -399,7 +396,7 @@ def test_terminal_call_status_resolves_a_calling_job_to_unclear(
 
     response = client.post(
         f"/voice/call-status/{job.job_id}",
-        data={"CallStatus": call_status},
+        data={"CallStatus": call_status, "CallSid": "CA_TEST"},
     )
 
     assert response.status_code == 204
@@ -412,7 +409,7 @@ def test_terminal_call_status_resolves_a_calling_job_to_unclear(
 
     again = client.post(
         f"/voice/call-status/{job.job_id}",
-        data={"CallStatus": call_status},
+        data={"CallStatus": call_status, "CallSid": "CA_TEST"},
     )
     assert again.status_code == 204
     assert get_job(job.job_id).status is JobStatus.UNCLEAR  # type: ignore[union-attr]
@@ -426,7 +423,7 @@ def test_call_status_does_not_promote_unrecorded_speech_to_confirmed() -> None:
 
     response = client.post(
         f"/voice/call-status/{job.job_id}",
-        data={"CallStatus": "completed"},
+        data={"CallStatus": "completed", "CallSid": "CA_TEST"},
     )
 
     assert response.status_code == 204
@@ -463,7 +460,7 @@ def test_late_call_status_does_not_overwrite_a_recorded_answer(
 
     response = client.post(
         f"/voice/call-status/{job.job_id}",
-        data={"CallStatus": "completed"},
+        data={"CallStatus": "completed", "CallSid": "CA_TEST"},
     )
 
     assert response.status_code == 204

@@ -2,7 +2,7 @@
 
 import hashlib
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import NamedTuple
 from uuid import uuid4
 
@@ -179,6 +179,9 @@ class OrderListItem(NamedTuple):
     capture_path: str
     order_id: str
     job_id: str | None
+    attempt_count: int
+    max_attempts: int
+    next_attempt_at: datetime | None
 
 
 class Dashboard(NamedTuple):
@@ -197,6 +200,9 @@ class OrderDetail(NamedTuple):
     status: str
     capture_path: str
     job_id: str | None
+    attempt_count: int
+    max_attempts: int
+    next_attempt_at: datetime | None
 
 
 class JobDetail(NamedTuple):
@@ -342,6 +348,9 @@ def _list_item(order: OrderRow, job: JobRow | None) -> OrderListItem:
         capture_path="" if job is None else job.capture_path,
         order_id=order.id,
         job_id=None if job is None else job.id,
+        attempt_count=0 if job is None else job.attempt_count,
+        max_attempts=3 if job is None else job.max_attempts,
+        next_attempt_at=None if job is None else _as_utc(job.next_attempt_at),
     )
 
 
@@ -356,6 +365,9 @@ def _order_detail(order: OrderRow, job: JobRow | None) -> OrderDetail:
         status="" if job is None else job.status,
         capture_path="" if job is None else job.capture_path,
         job_id=None if job is None else job.id,
+        attempt_count=0 if job is None else job.attempt_count,
+        max_attempts=3 if job is None else job.max_attempts,
+        next_attempt_at=None if job is None else _as_utc(job.next_attempt_at),
     )
 
 
@@ -422,11 +434,50 @@ def fetch_job(job_id: str) -> ConfirmationJob | None:
         return _to_job(row, order)
 
 
+def due_job_ids(now: datetime) -> list[str]:
+    """Pending jobs whose next dial is due. The caller claims each row before dialing."""
+
+    moment = _as_utc(now)
+    with _session() as session:
+        rows = session.scalars(
+            select(JobRow).where(
+                JobRow.status == JobStatus.PENDING.value,
+                JobRow.next_attempt_at.is_not(None),
+            )
+        ).all()
+    due: list[str] = []
+    for row in rows:
+        at = _as_utc(row.next_attempt_at)
+        if moment is not None and at is not None and at <= moment:
+            due.append(row.id)
+    return due
+
+
+def stuck_calling_ids(updated_before: datetime) -> list[str]:
+    """CALLING rows with no call id, last touched before `updated_before`."""
+
+    limit = _as_utc(updated_before)
+    with _session() as session:
+        rows = session.scalars(
+            select(JobRow).where(JobRow.status == JobStatus.CALLING.value)
+        ).all()
+    stuck: list[str] = []
+    for row in rows:
+        if row.call_sid:
+            continue
+        updated = _as_utc(row.updated_at)
+        if limit is not None and updated is not None and updated <= limit:
+            stuck.append(row.id)
+    return stuck
+
+
 def mark_calling(job_id: str, call_sid: str) -> ConfirmationJob:
     def _mark(job: ConfirmationJob) -> None:
         job.transition(JobStatus.CALLING)
+        job.call_sid = call_sid
+        job.next_attempt_at = None
 
-    updated = locked_update(job_id, _mark, call_sid=call_sid)
+    updated = locked_update(job_id, _mark)
     if updated is None:
         raise RuntimeError(f"job {job_id} disappeared before the call was marked")
     return updated[1]
@@ -435,8 +486,6 @@ def mark_calling(job_id: str, call_sid: str) -> ConfirmationJob:
 def locked_update(
     job_id: str,
     mutate: Callable[[ConfirmationJob], object],
-    *,
-    call_sid: str | None = None,
 ) -> tuple[object, ConfirmationJob] | None:
     """Lock the job row, run the state machine, and insert at most one outcome."""
 
@@ -457,8 +506,6 @@ def locked_update(
             job = _to_job(row, order)
             result = mutate(job)
             _write_job(row, job)
-            if call_sid is not None:
-                row.call_sid = call_sid
             if job.status.value in _ANSWERED and job.capture_path:
                 already = session.scalar(
                     select(OutcomeRow).where(OutcomeRow.job_id == job.job_id)
@@ -529,6 +576,10 @@ def _to_job(row: JobRow, order: OrderRow) -> ConfirmationJob:
         capture_path=row.capture_path,
         transcript=row.transcript,
         keypad_offered=row.keypad_offered,
+        call_sid=row.call_sid or "",
+        next_attempt_at=_as_utc(row.next_attempt_at),
+        ordered_at=_as_utc(order.created_at),
+        updated_at=_as_utc(row.updated_at),
     )
 
 
@@ -541,3 +592,13 @@ def _write_job(row: JobRow, job: ConfirmationJob) -> None:
     row.capture_path = job.capture_path
     row.transcript = job.transcript
     row.keypad_offered = job.keypad_offered
+    row.call_sid = job.call_sid or None
+    row.next_attempt_at = job.next_attempt_at
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)

@@ -1,5 +1,6 @@
 """Confirmation job and the status machine that decides when a call may be retried."""
 
+from datetime import datetime
 from enum import Enum
 from uuid import uuid4
 
@@ -35,6 +36,7 @@ _TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
         JobStatus.UNCLEAR,
         JobStatus.FAILED,
         JobStatus.MAX_RETRIES,
+        JobStatus.PENDING,
     },
     JobStatus.FAILED: {JobStatus.PENDING},
     JobStatus.CONFIRMED: set(),
@@ -64,6 +66,10 @@ class ConfirmationJob(BaseModel):
     capture_path: str = ""
     transcript: str = ""
     keypad_offered: bool = False
+    call_sid: str = ""
+    next_attempt_at: datetime | None = None
+    ordered_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @classmethod
     def from_order(cls, order: Order) -> "ConfirmationJob":
@@ -106,6 +112,22 @@ class ConfirmationJob(BaseModel):
         )
         self.transition(outcome)
         self.attempt_count = next_attempt
+
+    def defer_retry(self, when: datetime) -> None:
+        """Count this miss and wait until `when` for the next dial on this same job."""
+
+        if self.status is not JobStatus.CALLING:
+            raise InvalidJobTransition(
+                f"cannot defer a retry from {self.status.value}"
+            )
+        self.attempt_count += 1
+        self.transition(JobStatus.PENDING)
+        self.next_attempt_at = when
+        self.speech_result = ""
+        self.transcript = ""
+        self.capture_path = ""
+        self.keypad_offered = False
+        self.call_sid = ""
 
     def queue_retry(self) -> None:
         """Requeue a failed job. Refuses once attempt_count has reached max_attempts."""

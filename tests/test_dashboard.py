@@ -210,6 +210,32 @@ def test_live_poll_without_a_session_sends_hx_redirect() -> None:
     assert "data-count" not in response.text
 
 
+def test_waiting_retry_row_names_the_next_attempt() -> None:
+    client = _client()
+    token = _signup(client, "retry-row@shop.example", "Retry Row")
+    _queue(client, token, "ORD-RETRY", PHONE_A, "Asha")
+    order_id, job_id = _ids("retry-row@shop.example")
+    first = client.get("/app")
+    assert first.status_code == 200
+    assert "CALLING" in first.text
+    assert "Retry scheduled" not in first.text
+
+    ended = client.post(
+        f"/voice/call-status/{job_id}",
+        data={"CallStatus": "no-answer", "CallSid": "CA_TEST"},
+    )
+    assert ended.status_code == 204
+    page = client.get("/app")
+    assert "Retry scheduled" in page.text
+    assert "attempt 2 of 3" in page.text
+    assert "In progress" in page.text
+    assert _count(page.text, "in_progress") == 1
+    detail = client.get(f"/app/orders/{order_id}")
+    assert detail.status_code == 200
+    assert "Retry scheduled" in detail.text
+    assert "attempt 2 of 3" in detail.text
+
+
 def test_dashboard_routes_redirect_without_a_session() -> None:
     client = _client()
     for path in (

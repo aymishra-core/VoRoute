@@ -182,6 +182,13 @@ table.sheet {
   font-size: 13px;
 }
 
+.hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .fields { margin: 28px 0 0; max-width: 40rem; }
 
 .fields div {

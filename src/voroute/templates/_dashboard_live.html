@@ -29,7 +29,13 @@
       <td>{{ order.customer_name }}</td>
       <td class="mono">{{ order.phone }}</td>
       <td class="mono">{{ order.amount | inr }}</td>
-      <td>{{ order.status }}</td>
+      <td>
+        {% if order.next_attempt_at %}
+        In progress<span class="hint">Retry scheduled · attempt {{ order.attempt_count + 1 }} of {{ order.max_attempts }}</span>
+        {% else %}
+        {{ order.status }}
+        {% endif %}
+      </td>
       <td>{{ order.capture_path }}</td>
     </tr>
     {% endfor %}

@@ -118,7 +118,7 @@ def test_no_answer_and_busy_schedule_the_next_attempt_and_stop_at_three() -> Non
         assert done.next_attempt_at is None
         assert done.capture_path == "unclear"
         assert outcome_count(job.job_id) == 1
-        dispatch_due(t0 + timedelta(hours=9))
+        dispatch_due(t0 + timedelta(hours=5, minutes=30))
         assert dials.sids == ["CA1", "CA2", "CA3"]
 
 
@@ -249,7 +249,7 @@ def test_a_different_call_sid_does_not_schedule_a_retry() -> None:
 def test_a_miss_inside_the_last_hour_of_the_cutoff_settles_unclear() -> None:
     dials = _Dials()
     job, t0 = _start(dials, "ORD-cutoff")
-    _end(job.job_id, "no-answer", "CA1", t0 + timedelta(hours=9))
+    _end(job.job_id, "no-answer", "CA1", t0 + timedelta(hours=5))
 
     stored = get_job(job.job_id)
     assert stored is not None
@@ -264,7 +264,7 @@ def test_a_due_retry_past_the_cutoff_does_not_dial() -> None:
     dials = _Dials()
     job, t0 = _start(dials, "ORD-late")
     _end(job.job_id, "no-answer", "CA1", t0)
-    dispatch_due(t0 + timedelta(hours=11))
+    dispatch_due(t0 + timedelta(hours=7))
 
     stored = get_job(job.job_id)
     assert stored is not None

@@ -26,7 +26,7 @@ _RETRY = {"no-answer", "busy", "failed"}
 _TERMINAL = {"completed", "canceled"}
 _FAILED_ATTEMPT_CAP = 2
 _RETRY_DELAYS = {1: timedelta(hours=2), 2: timedelta(hours=3)}
-_CUTOFF = timedelta(hours=10)
+_CUTOFF = timedelta(hours=6)
 _STUCK_CALLING = timedelta(minutes=2)
 
 

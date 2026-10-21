@@ -13,12 +13,17 @@ from voroute.store import (
     fetch_job,
     locked_update,
     mark_calling,
+    mark_place_failed,
     stuck_calling_ids,
 )
 from voroute.voflow.job import CapturePath, ConfirmationJob, JobStatus
 from voroute.voline.provider import place_call
 
 logger = logging.getLogger("voroute.voflow")
+
+
+class PlaceFailed(Exception):
+    """The first dial was rejected before the customer was reached."""
 
 _DECISIVE = {JobStatus.CONFIRMED.value, JobStatus.DECLINED.value}
 _CALL_ENDED = {"completed", "busy", "no-answer", "failed", "canceled"}
@@ -58,7 +63,12 @@ def enqueue(order: Order, merchant_id: str | None = None) -> ConfirmationJob:
         job.attempt_count,
         job.max_attempts,
     )
-    call_id = place_call(order.phone, job)
+    try:
+        call_id = place_call(order.phone, job)
+    except Exception:
+        logger.exception("job_id=%s voice=place-failed", job.job_id)
+        mark_place_failed(job.job_id)
+        raise PlaceFailed() from None
     job = mark_calling(job.job_id, call_id)
     logger.info(
         "order_id=%s job_id=%s call_id=%s status=%s confirmation call placed",

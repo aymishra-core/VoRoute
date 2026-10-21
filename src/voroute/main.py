@@ -8,7 +8,9 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -27,7 +29,7 @@ from voroute.auth import (
 )
 from voroute.config import settings
 from voroute.db import prepare_database
-from voroute.models import Order
+from voroute.models import PHONE_E164_DETAIL, Order
 from voroute.store import (
     DuplicateOrder,
     dashboard_for,
@@ -37,7 +39,7 @@ from voroute.store import (
     order_for_merchant,
 )
 from voroute.voflow import enqueue
-from voroute.voflow.dispatcher import dispatch_due
+from voroute.voflow.dispatcher import PlaceFailed, dispatch_due
 from voroute.voline.listen import router as listen_router
 from voroute.voline.twiml import router as voice_router
 
@@ -98,6 +100,20 @@ def create_app() -> FastAPI:
     @application.exception_handler(CsrfError)
     async def _on_csrf(request: Request, _exc: CsrfError) -> HTMLResponse:
         return _csrf_failed(request)
+
+    @application.exception_handler(RequestValidationError)
+    async def _on_validation(
+        _request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        errors = exc.errors()
+        phone_only = (
+            len(errors) == 1
+            and errors[0].get("loc", ())[-1:] == ("phone",)
+            and PHONE_E164_DETAIL in str(errors[0].get("msg", ""))
+        )
+        if phone_only:
+            return JSONResponse(status_code=422, content={"detail": PHONE_E164_DETAIL})
+        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
     return application
 
@@ -278,6 +294,8 @@ def _routes(application: FastAPI) -> None:
             enqueue(order, merchant_id=merchant_id)
         except DuplicateOrder:
             raise HTTPException(status_code=409, detail="order already queued") from None
+        except PlaceFailed:
+            raise HTTPException(status_code=502, detail="call could not be placed") from None
         return {"status": "queued", "order_id": order.order_id}
 
 

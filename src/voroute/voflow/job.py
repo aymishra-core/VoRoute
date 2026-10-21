@@ -29,7 +29,7 @@ class CapturePath(str, Enum):
 _OUTCOMES = {JobStatus.CONFIRMED, JobStatus.DECLINED, JobStatus.UNCLEAR}
 
 _TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
-    JobStatus.PENDING: {JobStatus.CALLING},
+    JobStatus.PENDING: {JobStatus.CALLING, JobStatus.FAILED},
     JobStatus.CALLING: {
         JobStatus.CONFIRMED,
         JobStatus.DECLINED,
@@ -96,6 +96,16 @@ class ConfirmationJob(BaseModel):
             raise InvalidJobTransition(f"cannot record {status.value} as a call outcome")
         self.transition(status)
         self.capture_path = path.value
+
+    def mark_unplaced(self) -> None:
+        """The first dial never left us. This is not a customer answer and not a retry."""
+
+        if self.status is not JobStatus.PENDING:
+            raise InvalidJobTransition(
+                f"cannot record an unplaced call from {self.status.value}"
+            )
+        self.next_attempt_at = None
+        self.transition(JobStatus.FAILED)
 
     def record_failure(self) -> None:
         """Count a failed attempt. Under the cap the job can be retried; at the cap it stops."""

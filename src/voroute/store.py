@@ -417,7 +417,7 @@ def create_pending(merchant_id: str, order: Order) -> ConfirmationJob:
             session.commit()
         except IntegrityError as exc:
             session.rollback()
-            if "UNIQUE" not in str(exc).upper():
+            if not is_duplicate_order(exc):
                 raise
             raise DuplicateOrder(order.order_id) from exc
     return job
@@ -432,6 +432,26 @@ def fetch_job(job_id: str) -> ConfirmationJob | None:
         if order is None:
             return None
         return _to_job(row, order)
+
+
+def is_duplicate_order(exc: BaseException) -> bool:
+    """True only for the per-merchant order id constraint, on Postgres or SQLite."""
+
+    message = str(exc).lower()
+    if "uq_orders_merchant_external" in message:
+        return True
+    return "orders.merchant_id" in message and "orders.external_order_id" in message
+
+
+def mark_place_failed(job_id: str) -> None:
+    """Move a still-pending job to FAILED. A later state is left alone."""
+
+    def _fail(job: ConfirmationJob) -> None:
+        if job.status is not JobStatus.PENDING:
+            return
+        job.mark_unplaced()
+
+    locked_update(job_id, _fail)
 
 
 def due_job_ids(now: datetime) -> list[str]:

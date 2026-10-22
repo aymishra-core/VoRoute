@@ -298,6 +298,18 @@ def _routes(application: FastAPI) -> None:
             raise HTTPException(status_code=502, detail="call could not be placed") from None
         return {"status": "queued", "order_id": order.order_id}
 
+    @application.post("/tasks/tick")
+    def tick(authorization: str | None = Header(default=None)) -> dict[str, str | int]:
+        if not settings.tick_token.strip():
+            raise HTTPException(
+                status_code=503,
+                detail="tick not configured: TICK_TOKEN is not set",
+            )
+        if not _key_matches(settings.tick_token, _presented_bearer(authorization)):
+            raise HTTPException(status_code=401, detail="unauthorized")
+        sweep = dispatch_due()
+        return {"due": sweep.due, "dialed": sweep.dialed, "cutoff": sweep.cutoff}
+
 
 def _merchant_or_login(request: Request) -> str | HTMLResponse:
     merchant_id = current_merchant_id(request.session)

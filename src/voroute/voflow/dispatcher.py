@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from typing import NamedTuple
 
 from voroute.models import Order
 from voroute.store import (
@@ -24,6 +25,12 @@ logger = logging.getLogger("voroute.voflow")
 
 class PlaceFailed(Exception):
     """The first dial was rejected before the customer was reached."""
+
+
+class Sweep(NamedTuple):
+    due: int
+    dialed: int
+    cutoff: int
 
 _DECISIVE = {JobStatus.CONFIRMED.value, JobStatus.DECLINED.value}
 _CALL_ENDED = {"completed", "busy", "no-answer", "failed", "canceled"}
@@ -134,15 +141,23 @@ def apply_call_ended(
     locked_update(job_id, _end)
 
 
-def dispatch_due(now: datetime | None = None) -> None:
+def dispatch_due(now: datetime | None = None) -> Sweep:
     """Place retries whose due time has arrived. Claim the row before dialing."""
 
     moment = _clock(now)
-    for job_id in due_job_ids(moment):
+    due = due_job_ids(moment)
+    dialed = 0
+    cutoff = 0
+    for job_id in due:
         try:
-            _dial_due(job_id, moment)
+            outcome = _dial_due(job_id, moment)
         except Exception:
             logger.exception("job_id=%s retry dispatch failed", job_id)
+            continue
+        if outcome == "dialed":
+            dialed += 1
+        elif outcome == "cutoff":
+            cutoff += 1
     # A claim is only stuck when the row has had no call id for two real minutes.
     # The due-time clock can be ahead of that, and must not recover an in-flight dial.
     wall = _clock(None)
@@ -151,6 +166,7 @@ def dispatch_due(now: datetime | None = None) -> None:
             _recover_stuck(job_id, wall)
         except Exception:
             logger.exception("job_id=%s stuck calling recovery failed", job_id)
+    return Sweep(due=len(due), dialed=dialed, cutoff=cutoff)
 
 
 def apply_digits(job_id: str, digits: str) -> AfterListen:
@@ -244,25 +260,25 @@ def _settle_unclear(job: ConfirmationJob) -> None:
     _log_outcome(job)
 
 
-def _dial_due(job_id: str, moment: datetime) -> None:
-    def _claim(job: ConfirmationJob) -> bool:
+def _dial_due(job_id: str, moment: datetime) -> str:
+    def _claim(job: ConfirmationJob) -> str:
         if job.status is not JobStatus.PENDING or job.next_attempt_at is None:
-            return False
+            return "skip"
         if job.next_attempt_at > moment:
-            return False
+            return "skip"
         if job.ordered_at is None or moment > job.ordered_at + _CUTOFF:
             job.transition(JobStatus.CALLING)
             job.next_attempt_at = None
             _settle_unclear(job)
-            return False
+            return "cutoff"
         job.transition(JobStatus.CALLING)
         job.next_attempt_at = None
         job.call_sid = ""
-        return True
+        return "dial"
 
     found = locked_update(job_id, _claim)
-    if found is None or found[0] is not True:
-        return
+    if found is None or found[0] != "dial":
+        return "skip" if found is None else found[0]
     job = found[1]
     try:
         sid = place_call(job.phone, job)
@@ -274,7 +290,7 @@ def _dial_due(job_id: str, moment: datetime) -> None:
             if current.status is JobStatus.CALLING and not current.call_sid
             else None,
         )
-        return
+        return "skip"
 
     def _save(current: ConfirmationJob) -> None:
         if current.status is JobStatus.CALLING and not current.call_sid:
@@ -282,6 +298,7 @@ def _dial_due(job_id: str, moment: datetime) -> None:
 
     locked_update(job_id, _save)
     logger.info("job_id=%s call_id=%s retry dial placed", job_id, sid)
+    return "dialed"
 
 
 def _recover_stuck(job_id: str, moment: datetime) -> None:

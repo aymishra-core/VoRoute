@@ -171,8 +171,12 @@ def test_login_cookie_is_httponly_secure_and_lax(client: TestClient) -> None:
     response = client.post(
         "/login",
         data={"email": EMAIL, "password": PASSWORD, "csrf_token": token},
+        follow_redirects=False,
     )
-    assert response.status_code == 200
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/app")
+    assert "application/json" not in response.headers.get("content-type", "")
+    assert response.text == ""
     header = _cookie_header(response)
     assert "voroute_session=" in header
     assert "httponly" in header
@@ -198,8 +202,10 @@ def test_session_merchant_ignores_request_input(client: TestClient) -> None:
             "csrf_token": token,
             "merchant_id": other.merchant_id,
         },
+        follow_redirects=False,
     )
-    assert response.status_code == 200
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/app")
     cookie = client.cookies.get("voroute_session")
     assert cookie is not None
     session = _read_session(cookie)
@@ -280,8 +286,9 @@ def test_modified_cookie_does_not_authenticate(client: TestClient) -> None:
     assert tampered.status_code == 401
     assert tampered.json() == {"detail": "unauthorized"}
     client.cookies.set("voroute_session", original)
-    still = client.post("/logout", data={"csrf_token": csrf})
-    assert still.status_code == 200
+    still = client.post("/logout", data={"csrf_token": csrf}, follow_redirects=False)
+    assert still.status_code == 303
+    assert still.headers["location"].endswith("/login")
 
 
 def test_forged_cookie_signature_does_not_authenticate(client: TestClient) -> None:
@@ -309,12 +316,39 @@ def test_logout_clears_the_session(client: TestClient) -> None:
     bad = client.post("/logout", data={"csrf_token": "nope"})
     _assert_csrf_page(bad, "/app")
     assert client.cookies.get("voroute_session")
-    first = client.post("/logout", data={"csrf_token": csrf})
-    assert first.status_code == 200
+    first = client.post("/logout", data={"csrf_token": csrf}, follow_redirects=False)
+    assert first.status_code == 303
+    assert first.headers["location"].endswith("/login")
+    assert "application/json" not in first.headers.get("content-type", "")
+    assert first.text == ""
     header = _cookie_header(first)
     assert "expires=thu, 01 jan 1970" in header
     second = client.post("/logout", data={"csrf_token": csrf})
     assert second.status_code == 401
+
+
+def test_logout_redirects_to_login_and_clears_the_session(client: TestClient) -> None:
+    created = _signup(client)
+    assert created.status_code == 200
+    csrf = _csrf(created.text)
+    cookie = client.cookies.get("voroute_session")
+    assert cookie is not None
+    assert "user_id" in _read_session(cookie)
+    response = client.post(
+        "/logout",
+        data={"csrf_token": csrf},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/login")
+    assert "application/json" not in response.headers.get("content-type", "")
+    assert response.text == ""
+    assert '{"status"' not in response.text
+    assert "expires=thu, 01 jan 1970" in _cookie_header(response)
+    home = client.get("/app", follow_redirects=False)
+    assert home.status_code == 302
+    assert home.headers["location"].endswith("/login")
+    assert "Dashboard" not in home.text
 
 
 _ORDER = {
@@ -391,6 +425,22 @@ def test_csrf_handler_reads_the_session(client: TestClient) -> None:
     )
     _assert_csrf_page(missing, "/login")
     assert created.status_code == 200
+
+
+def test_get_login_returns_the_html_form(client: TestClient) -> None:
+    response = client.get("/login")
+    assert response.status_code == 200
+    content_type = response.headers["content-type"]
+    assert content_type.startswith("text/html")
+    assert "application/json" not in content_type
+    assert '<form method="post" action="/login">' in response.text
+    assert 'name="email"' in response.text
+    assert 'type="password"' in response.text
+    assert 'name="password"' in response.text
+    assert not response.text.lstrip().startswith("{")
+    assert '{"status"' not in response.text
+    with pytest.raises(json.JSONDecodeError):
+        response.json()
 
 
 def test_logged_in_login_and_signup_redirect_home(client: TestClient) -> None:

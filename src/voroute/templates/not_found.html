@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Not found — VoRoute{% endblock %}
+{% block body_class %}auth{% endblock %}
 {% block body %}
-<h1>Not found</h1>
+<div class="card">
+  <p class="kicker">Missing</p>
+  <h1>Not found</h1>
+  <p class="lede">That page is not on this account.</p>
+  <p class="lede"><a class="text-link" href="/app">Dashboard</a></p>
+</div>
 {% endblock %}

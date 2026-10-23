@@ -13,7 +13,7 @@
   <form method="post" action="/app/regenerate-token">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <p class="warn">This invalidates your current token. You'll need to update your integration.</p>
-    <button type="submit">Regenerate API token</button>
+    <button class="button-primary" type="submit">Regenerate API token</button>
   </form>
 </details>
 {% endblock %}

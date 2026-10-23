@@ -283,8 +283,13 @@ def test_decline_share_appears_only_when_a_call_was_decisive() -> None:
 def test_cockpit_stylesheet_uses_the_landing_palette() -> None:
     response = _client().get("/static/cockpit.css")
     assert response.status_code == 200
-    assert "#0c0d0c" in response.text
-    assert "#c6f54e" in response.text
+    assert "#0a0e1a" in response.text
+    assert "#38bdf8" in response.text
+    assert "#34d399" in response.text
+    assert "#f87171" in response.text
+    assert "#fbbf24" in response.text
+    assert "#0c0d0c" not in response.text
+    assert "#c6f54e" not in response.text
 
 
 def test_store_has_no_unscoped_order_list() -> None:

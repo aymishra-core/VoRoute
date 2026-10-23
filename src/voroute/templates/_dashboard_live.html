@@ -1,14 +1,15 @@
 <div class="strip" aria-label="Call counts">
-  <div><b data-count="confirmed">{{ dashboard.counts.confirmed }}</b><span>Confirmed</span></div>
-  <div><b data-count="declined">{{ dashboard.counts.declined }}</b><span>Declined</span></div>
-  <div><b data-count="unclear">{{ dashboard.counts.unclear }}</b><span>Unclear</span></div>
-  <div><b data-count="in_progress">{{ dashboard.counts.in_progress }}</b><span>In progress</span></div>
-  <div><b data-count="failed">{{ dashboard.counts.failed }}</b><span>Failed</span></div>
+  <div class="stat stat-confirmed"><b data-count="confirmed">{{ dashboard.counts.confirmed }}</b><span>Confirmed</span></div>
+  <div class="stat stat-declined"><b data-count="declined">{{ dashboard.counts.declined }}</b><span>Declined</span></div>
+  <div class="stat stat-unclear"><b data-count="unclear">{{ dashboard.counts.unclear }}</b><span>Unclear</span></div>
+  <div class="stat stat-progress"><b data-count="in_progress">{{ dashboard.counts.in_progress }}</b><span>In progress</span></div>
+  <div class="stat stat-failed"><b data-count="failed">{{ dashboard.counts.failed }}</b><span>Failed</span></div>
 </div>
 {% if dashboard.decline_share is not none %}
 <p class="share">Decline share {{ "%.1f"|format(dashboard.decline_share * 100) }}%</p>
 {% endif %}
 {% if dashboard.orders %}
+<div class="table-wrap">
 <table class="sheet">
   <thead>
     <tr>
@@ -31,16 +32,17 @@
       <td class="mono">{{ order.amount | inr }}</td>
       <td>
         {% if order.next_attempt_at %}
-        In progress<span class="hint">Retry scheduled · attempt {{ order.attempt_count + 1 }} of {{ order.max_attempts }}</span>
+        <span class="pill pill-scheduled">In progress</span><span class="hint">Retry scheduled · attempt {{ order.attempt_count + 1 }} of {{ order.max_attempts }}</span>
         {% else %}
-        {{ order.status }}
+        <span class="pill pill-{{ order.status | lower }}">{{ order.status }}</span>
         {% endif %}
       </td>
-      <td>{{ order.capture_path }}</td>
+      <td class="mono">{{ order.capture_path }}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p class="empty">No orders yet.</p>
 {% endif %}

@@ -1,13 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Log in — VoRoute{% endblock %}
+{% block body_class %}auth{% endblock %}
 {% block body %}
-<p class="kicker">Account</p>
-<h1>Log in</h1>
-<form method="post" action="/login">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <label>Email <input name="email" type="text" autocomplete="username"></label>
-  <label>Password <input name="password" type="password" autocomplete="current-password"></label>
-  <button type="submit">Log in</button>
-</form>
-<p class="lede"><a href="/signup">Create an account</a></p>
+<div class="card">
+  <p class="kicker">Account</p>
+  <h1>Log in</h1>
+  <p class="lede">Confirm orders before they ship.</p>
+  <form method="post" action="/login">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Email <input name="email" type="text" autocomplete="username"></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password"></label>
+    <button type="submit">Log in</button>
+  </form>
+  <p class="lede">New here? <a href="/signup">Create an account</a></p>
+</div>
 {% endblock %}

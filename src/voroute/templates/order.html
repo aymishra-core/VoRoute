@@ -11,12 +11,12 @@
   <div><dt>Amount</dt><dd class="mono">{{ order.amount | inr }}</dd></div>
   <div><dt>Status</dt><dd>
     {% if order.next_attempt_at %}
-    In progress<span class="hint">Retry scheduled · attempt {{ order.attempt_count + 1 }} of {{ order.max_attempts }}</span>
+    <span class="pill pill-scheduled">In progress</span><span class="hint">Retry scheduled · attempt {{ order.attempt_count + 1 }} of {{ order.max_attempts }}</span>
     {% else %}
-    {{ order.status }}
+    <span class="pill pill-{{ order.status | lower }}">{{ order.status }}</span>
     {% endif %}
   </dd></div>
-  <div><dt>Capture</dt><dd>{{ order.capture_path }}</dd></div>
+  <div><dt>Capture</dt><dd class="mono">{{ order.capture_path }}</dd></div>
 </dl>
 <a class="back" href="/app">Dashboard</a>
 {% endblock %}

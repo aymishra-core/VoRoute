@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block title %}That account already exists — VoRoute{% endblock %}
+{% block body_class %}auth{% endblock %}
 {% block body %}
-<p class="kicker">Account</p>
-<h1>That account already exists</h1>
-<p class="lede">{{ email }} is already registered.</p>
-<p class="lede"><a href="/login">Log in</a></p>
+<div class="card">
+  <p class="kicker">Account</p>
+  <h1>That account already exists</h1>
+  <p class="warn">{{ email }} is already registered.</p>
+  <p class="lede"><a class="text-link" href="/login">Log in</a></p>
+</div>
 {% endblock %}

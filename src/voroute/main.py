@@ -123,7 +123,7 @@ def _routes(application: FastAPI) -> None:
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "voroute"}
 
-    @application.get("/login", response_model=None)
+    @application.get("/login", response_class=HTMLResponse, response_model=None)
     def show_login(request: Request) -> HTMLResponse | RedirectResponse:
         if current_merchant_id(request.session) is not None:
             return RedirectResponse("/app", status_code=303)
@@ -260,23 +260,23 @@ def _routes(application: FastAPI) -> None:
         email: str = Form(""),
         password: str = Form(""),
         csrf_token: str = Form(""),
-    ) -> HTMLResponse | dict[str, str]:
+    ) -> RedirectResponse:
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
             raise CsrfError()
         user_id = authenticate(email, password)
         if user_id is None:
             raise HTTPException(status_code=401, detail="email or password is wrong")
-        rotated = establish_session(request.session, user_id)
-        return {"status": "ok", "csrf_token": rotated}
+        establish_session(request.session, user_id)
+        return RedirectResponse("/app", status_code=303)
 
     @application.post("/logout", response_model=None)
-    def log_out(request: Request, csrf_token: str = Form("")) -> HTMLResponse | dict[str, str]:
+    def log_out(request: Request, csrf_token: str = Form("")) -> RedirectResponse:
         if current_merchant_id(request.session) is None:
             raise HTTPException(status_code=401, detail="unauthorized")
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
             raise CsrfError()
         request.session.clear()
-        return {"status": "ok"}
+        return RedirectResponse("/login", status_code=303)
 
     @application.post("/orders")
     def create_order(

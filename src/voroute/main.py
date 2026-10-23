@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -103,8 +104,10 @@ def create_app() -> FastAPI:
 
     @application.exception_handler(RequestValidationError)
     async def _on_validation(
-        _request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+        request: Request, exc: RequestValidationError
+    ) -> Response:
+        if not _machine_path(request.url.path):
+            return _error_page(request, "That form could not be submitted.", 422)
         errors = exc.errors()
         phone_only = (
             len(errors) == 1
@@ -114,6 +117,9 @@ def create_app() -> FastAPI:
         if phone_only:
             return JSONResponse(status_code=422, content={"detail": PHONE_E164_DETAIL})
         return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
+
+    application.add_exception_handler(StarletteHTTPException, _on_http_error)
+    application.add_exception_handler(HTTPException, _on_http_error)
 
     return application
 
@@ -218,7 +224,15 @@ def _routes(application: FastAPI) -> None:
                     {"email": email},
                     status_code=409,
                 )
-            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+            return templates.TemplateResponse(
+                request,
+                "signup.html",
+                {
+                    "csrf_token": request.session.get("csrf_token", ""),
+                    "error": exc.detail,
+                },
+                status_code=exc.status_code,
+            )
         rotated = establish_session(request.session, user_id)
         return templates.TemplateResponse(
             request,
@@ -242,7 +256,7 @@ def _routes(application: FastAPI) -> None:
         try:
             api_token = regenerate_api_token(merchant_id)
         except AuthError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+            return _error_page(request, exc.detail, exc.status_code)
         rotated = issue_csrf(request.session)
         return templates.TemplateResponse(
             request,
@@ -260,19 +274,37 @@ def _routes(application: FastAPI) -> None:
         email: str = Form(""),
         password: str = Form(""),
         csrf_token: str = Form(""),
-    ) -> RedirectResponse:
+    ) -> HTMLResponse | RedirectResponse:
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
             raise CsrfError()
         user_id = authenticate(email, password)
         if user_id is None:
-            raise HTTPException(status_code=401, detail="email or password is wrong")
+            return templates.TemplateResponse(
+                request,
+                "login.html",
+                {
+                    "csrf_token": request.session.get("csrf_token", ""),
+                    "error": "email or password is wrong",
+                },
+                status_code=401,
+            )
         establish_session(request.session, user_id)
+        return RedirectResponse("/app", status_code=303)
+
+    @application.get("/logout", response_model=None)
+    def show_logout() -> RedirectResponse:
+        return RedirectResponse("/login", status_code=303)
+
+    @application.get("/app/regenerate-token", response_model=None)
+    def regenerate_token_page(request: Request) -> RedirectResponse:
+        if current_merchant_id(request.session) is None:
+            return RedirectResponse("/login", status_code=303)
         return RedirectResponse("/app", status_code=303)
 
     @application.post("/logout", response_model=None)
     def log_out(request: Request, csrf_token: str = Form("")) -> RedirectResponse:
         if current_merchant_id(request.session) is None:
-            raise HTTPException(status_code=401, detail="unauthorized")
+            return RedirectResponse("/login", status_code=303)
         if not csrf_ok(request.session.get("csrf_token"), csrf_token):
             raise CsrfError()
         request.session.clear()
@@ -316,6 +348,40 @@ def _merchant_or_login(request: Request) -> str | HTMLResponse:
     if merchant_id is None:
         return RedirectResponse("/login", status_code=302)
     return merchant_id
+
+
+def _machine_path(path: str) -> bool:
+    if path == "/health" or path.startswith("/health/"):
+        return True
+    return any(
+        path == prefix or path.startswith(prefix + "/")
+        for prefix in ("/orders", "/tasks", "/voice", "/audio")
+    )
+
+
+async def _on_http_error(request: Request, exc: StarletteHTTPException) -> Response:
+    if _machine_path(request.url.path):
+        headers = dict(exc.headers) if exc.headers else None
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=headers,
+        )
+    if exc.status_code in {401, 403, 405}:
+        return RedirectResponse("/login", status_code=303)
+    if exc.status_code == 404:
+        return _not_found(request)
+    detail = exc.detail if isinstance(exc.detail, str) else "Something went wrong."
+    return _error_page(request, detail, exc.status_code)
+
+
+def _error_page(request: Request, message: str, status_code: int) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "error.html",
+        {"message": message},
+        status_code=status_code,
+    )
 
 
 def _not_found(request: Request) -> HTMLResponse:

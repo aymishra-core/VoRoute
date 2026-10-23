@@ -144,7 +144,10 @@ def test_short_password_writes_nothing(client: TestClient) -> None:
     before = account_counts()
     response = _signup(client, password="tiny")
     assert response.status_code == 400
-    assert response.json() == {"detail": "password must be at least 10 characters"}
+    assert response.headers["content-type"].startswith("text/html")
+    assert "application/json" not in response.headers["content-type"]
+    assert "password must be at least 10 characters" in response.text
+    assert '<form method="post" action="/signup">' in response.text
     assert account_counts() == before
 
 
@@ -162,7 +165,12 @@ def test_unknown_email_and_wrong_password_look_the_same(client: TestClient) -> N
     assert unknown.status_code == 401
     assert unknown.status_code == wrong.status_code
     assert unknown.content == wrong.content
-    assert unknown.json() == {"detail": "email or password is wrong"}
+    assert unknown.headers["content-type"].startswith("text/html")
+    assert "application/json" not in unknown.headers["content-type"]
+    assert "email or password is wrong" in unknown.text
+    assert '<form method="post" action="/login">' in unknown.text
+    assert "nobody@shop.example" not in unknown.text
+    assert EMAIL not in wrong.text
 
 
 def test_login_cookie_is_httponly_secure_and_lax(client: TestClient) -> None:
@@ -268,9 +276,12 @@ def test_state_changing_posts_require_the_csrf_token(client: TestClient) -> None
     )
     _assert_csrf_page(wrong, "/login")
     assert find_user_by_email(EMAIL) is None
-    logged_out = client.post("/logout", data={"csrf_token": token})
-    assert logged_out.status_code == 401
-    assert logged_out.json() == {"detail": "unauthorized"}
+    logged_out = client.post(
+        "/logout", data={"csrf_token": token}, follow_redirects=False
+    )
+    assert logged_out.status_code == 303
+    assert logged_out.headers["location"].endswith("/login")
+    assert "application/json" not in logged_out.headers.get("content-type", "")
 
 
 def test_modified_cookie_does_not_authenticate(client: TestClient) -> None:
@@ -282,9 +293,10 @@ def test_modified_cookie_does_not_authenticate(client: TestClient) -> None:
     parts = original.split(".")
     parts[0] = parts[0][:-1] + ("A" if parts[0][-1] != "A" else "B")
     client.cookies.set("voroute_session", ".".join(parts))
-    tampered = client.post("/logout", data={"csrf_token": csrf})
-    assert tampered.status_code == 401
-    assert tampered.json() == {"detail": "unauthorized"}
+    tampered = client.post("/logout", data={"csrf_token": csrf}, follow_redirects=False)
+    assert tampered.status_code == 303
+    assert tampered.headers["location"].endswith("/login")
+    assert "application/json" not in tampered.headers.get("content-type", "")
     client.cookies.set("voroute_session", original)
     still = client.post("/logout", data={"csrf_token": csrf}, follow_redirects=False)
     assert still.status_code == 303
@@ -304,8 +316,9 @@ def test_forged_cookie_signature_does_not_authenticate(client: TestClient) -> No
         ).encode()
     )
     client.cookies.set("voroute_session", signer.sign(payload).decode())
-    forged = client.post("/logout", data={"csrf_token": csrf})
-    assert forged.status_code == 401
+    forged = client.post("/logout", data={"csrf_token": csrf}, follow_redirects=False)
+    assert forged.status_code == 303
+    assert forged.headers["location"].endswith("/login")
     assert find_user_by_email(EMAIL) is not None
 
 
@@ -323,8 +336,10 @@ def test_logout_clears_the_session(client: TestClient) -> None:
     assert first.text == ""
     header = _cookie_header(first)
     assert "expires=thu, 01 jan 1970" in header
-    second = client.post("/logout", data={"csrf_token": csrf})
-    assert second.status_code == 401
+    second = client.post("/logout", data={"csrf_token": csrf}, follow_redirects=False)
+    assert second.status_code == 303
+    assert second.headers["location"].endswith("/login")
+    assert "application/json" not in second.headers.get("content-type", "")
 
 
 def test_logout_redirects_to_login_and_clears_the_session(client: TestClient) -> None:
@@ -349,6 +364,56 @@ def test_logout_redirects_to_login_and_clears_the_session(client: TestClient) ->
     assert home.status_code == 302
     assert home.headers["location"].endswith("/login")
     assert "Dashboard" not in home.text
+
+
+def test_get_logout_redirects_to_login_with_or_without_a_session(
+    client: TestClient,
+) -> None:
+    logged_out = client.get("/logout", follow_redirects=False)
+    assert logged_out.status_code == 303
+    assert logged_out.headers["location"].endswith("/login")
+    assert "application/json" not in logged_out.headers.get("content-type", "")
+    assert logged_out.text == ""
+    assert '{"detail"' not in logged_out.text
+
+    assert _signup(client).status_code == 200
+    cookie = client.cookies.get("voroute_session")
+    assert cookie is not None
+    user_id = _read_session(cookie)["user_id"]
+    logged_in = client.get("/logout", follow_redirects=False)
+    assert logged_in.status_code == 303
+    assert logged_in.headers["location"].endswith("/login")
+    assert "application/json" not in logged_in.headers.get("content-type", "")
+    assert logged_in.text == ""
+    stayed = client.cookies.get("voroute_session")
+    assert stayed is not None
+    assert _read_session(stayed)["user_id"] == user_id
+    board = client.get("/app", follow_redirects=False)
+    assert board.status_code == 200
+    assert "Dashboard" in board.text
+
+
+def test_logged_out_app_redirects_to_login_not_json(client: TestClient) -> None:
+    response = client.get("/app", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["location"].endswith("/login")
+    assert "application/json" not in response.headers.get("content-type", "")
+    assert '{"detail"' not in response.text
+    client.cookies.set("voroute_session", "not-a-valid-session")
+    expired = client.get("/app", follow_redirects=False)
+    assert expired.status_code == 302
+    assert expired.headers["location"].endswith("/login")
+    assert "application/json" not in expired.headers.get("content-type", "")
+    assert '{"detail"' not in expired.text
+
+
+def test_unknown_page_renders_html(client: TestClient) -> None:
+    response = client.get("/no-such-page")
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("text/html")
+    assert "application/json" not in response.headers["content-type"]
+    assert "Not found" in response.text
+    assert '{"detail"' not in response.text
 
 
 _ORDER = {
@@ -389,6 +454,17 @@ def test_replayed_csrf_token_is_rejected(client: TestClient) -> None:
     cookie = client.cookies.get("voroute_session")
     assert cookie is not None
     assert set(_read_session(cookie)) == {"user_id", "csrf_token"}
+
+
+def test_orders_api_stays_json(client: TestClient) -> None:
+    response = client.post(
+        "/orders",
+        json={**_ORDER, "order_id": "ORD-STILL-JSON"},
+        headers={"Authorization": "Bearer not-a-real-token"},
+    )
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json() == {"detail": "unauthorized"}
 
 
 def test_orders_bad_key_stays_json(client: TestClient) -> None:

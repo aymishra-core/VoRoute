@@ -129,6 +129,12 @@ def _routes(application: FastAPI) -> None:
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "voroute"}
 
+    @application.get("/", response_model=None)
+    def home(request: Request) -> RedirectResponse:
+        if current_merchant_id(request.session) is not None:
+            return RedirectResponse("/app", status_code=303)
+        return RedirectResponse("/login", status_code=303)
+
     @application.get("/login", response_class=HTMLResponse, response_model=None)
     def show_login(request: Request) -> HTMLResponse | RedirectResponse:
         if current_merchant_id(request.session) is not None:

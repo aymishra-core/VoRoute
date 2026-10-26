@@ -503,6 +503,20 @@ def test_csrf_handler_reads_the_session(client: TestClient) -> None:
     assert created.status_code == 200
 
 
+def test_get_root_redirects_to_login(client: TestClient) -> None:
+    logged_out = client.get("/", follow_redirects=False)
+    assert logged_out.status_code == 303
+    assert logged_out.headers["location"].endswith("/login")
+    assert logged_out.status_code != 404
+    assert "Not found" not in logged_out.text
+
+    assert _signup(client).status_code == 200
+    logged_in = client.get("/", follow_redirects=False)
+    assert logged_in.status_code == 303
+    assert logged_in.headers["location"].endswith("/app")
+    assert "Not found" not in logged_in.text
+
+
 def test_get_login_returns_the_html_form(client: TestClient) -> None:
     response = client.get("/login")
     assert response.status_code == 200

@@ -61,6 +61,7 @@ def test_place_call_builds_twilio_params(monkeypatch: pytest.MonkeyPatch) -> Non
         status_callback=f"https://calls.test/voice/call-status/{job.job_id}",
         status_callback_method="POST",
         status_callback_event=["completed"],
+        machine_detection="Enable",
     )
 
 
@@ -93,6 +94,7 @@ def test_enqueue_moves_job_from_pending_to_calling(
         status_callback=f"https://calls.test/voice/call-status/{job.job_id}",
         status_callback_method="POST",
         status_callback_event=["completed"],
+        machine_detection="Enable",
     )
 
 
@@ -232,6 +234,111 @@ def test_missing_deepgram_key_skips_stream_and_offers_keypad(
     assert prompt is not None
     assert prompt.text == "confirm ke liye 1 dabayein, cancel ke liye 2"
     assert prompt.attrib["voice"] == "Polly.Aditi"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{}, {"AnsweredBy": "human", "CallSid": "CA_TEST"}],
+)
+def test_a_human_or_absent_amd_result_plays_the_greeting(
+    payload: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "elevenlabs_api_key", "")
+    monkeypatch.setattr(settings, "deepgram_api_key", "dg-test")
+    monkeypatch.setattr(settings, "public_base_url", "https://calls.test")
+    job = enqueue(_order())
+
+    response = client.post(f"/voice/twiml/{job.job_id}", data=payload)
+
+    assert response.status_code == 200
+    root = ET.fromstring(response.text)
+    say = root.find("Say")
+    assert say is not None
+    assert say.text == job.script
+    assert root.find("Hangup") is None
+    _listen_tail(root, job.job_id)
+    stored = get_job(job.job_id)
+    assert stored is not None
+    assert stored.status is JobStatus.CALLING
+    assert stored.status is not JobStatus.CONFIRMED
+
+
+@pytest.mark.parametrize("answered_by", ["machine_start", "fax", "unknown", "other"])
+def test_a_machine_answer_hangs_up_and_schedules_a_retry(
+    answered_by: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "elevenlabs_api_key", "test-key")
+    monkeypatch.setattr(settings, "public_base_url", "https://calls.test")
+
+    def fail_synthesis(*_args: object, **_kwargs: object) -> MagicMock:
+        raise AssertionError("a machine answer must not synthesize audio")
+
+    monkeypatch.setattr(speech.httpx, "post", fail_synthesis)
+    job = enqueue(_order())
+
+    response = client.post(
+        f"/voice/twiml/{job.job_id}",
+        data={"AnsweredBy": answered_by, "CallSid": "CA_TEST"},
+    )
+
+    assert response.status_code == 200
+    root = ET.fromstring(response.text)
+    assert root.find("Hangup") is not None
+    assert root.find("Play") is None
+    assert root.find("Say") is None
+    assert root.find("Gather") is None
+    assert root.find("Connect") is None
+    assert "Namaste" not in response.text
+    stored = get_job(job.job_id)
+    assert stored is not None
+    assert stored.status is JobStatus.PENDING
+    assert stored.attempt_count == 1
+    assert stored.next_attempt_at is not None
+    assert stored.status is not JobStatus.CONFIRMED
+    completed = client.post(
+        f"/voice/call-status/{job.job_id}",
+        data={"CallStatus": "completed", "CallSid": "CA_TEST"},
+    )
+    assert completed.status_code == 204
+    after = get_job(job.job_id)
+    assert after is not None
+    assert after.status is JobStatus.PENDING
+    assert after.status is not JobStatus.CONFIRMED
+
+
+def test_a_machine_answer_settles_unclear_when_retries_are_used_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlalchemy import update
+
+    from voroute.db import session_factory
+    from voroute.tables import JobRow
+
+    monkeypatch.setattr(settings, "elevenlabs_api_key", "")
+    monkeypatch.setattr(settings, "public_base_url", "https://calls.test")
+    job = enqueue(_order())
+    session = session_factory()()
+    session.execute(
+        update(JobRow).where(JobRow.id == job.job_id).values(attempt_count=2)
+    )
+    session.commit()
+    session.close()
+
+    response = client.post(
+        f"/voice/twiml/{job.job_id}",
+        data={"AnsweredBy": "machine_start", "CallSid": "CA_TEST"},
+    )
+
+    assert response.status_code == 200
+    root = ET.fromstring(response.text)
+    assert root.find("Hangup") is not None
+    assert root.find("Say") is None
+    assert root.find("Play") is None
+    stored = get_job(job.job_id)
+    assert stored is not None
+    assert stored.status is JobStatus.UNCLEAR
+    assert stored.status is not JobStatus.CONFIRMED
+    assert stored.next_attempt_at is None
 
 
 def test_listen_result_records_speech_and_hangs_up(

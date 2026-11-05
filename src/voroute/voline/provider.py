@@ -38,6 +38,7 @@ class TwilioProvider:
             status_callback=f"{base}/voice/call-status/{job.job_id}",
             status_callback_method="POST",
             status_callback_event=["completed"],
+            machine_detection="Enable",
         )
         return str(call.sid)
 

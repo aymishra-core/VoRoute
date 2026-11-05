@@ -134,10 +134,19 @@ def _xml(action: AfterListen, job_id: str) -> Response:
 
 
 @router.api_route("/voice/twiml/{job_id}", methods=["GET", "POST"])
-def confirmation_twiml(job_id: str) -> Response:
+async def confirmation_twiml(job_id: str, request: Request) -> Response:
     job = get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
+    answered_by, call_sid = await _amd_fields(request)
+    if answered_by not in {"", "human"}:
+        apply_call_ended(job.job_id, "no-answer", call_sid)
+        logger.info(
+            "job_id=%s voice=machine answered_by=%s",
+            job.job_id,
+            answered_by,
+        )
+        return Response(content=render_hangup(), media_type="application/xml")
     try:
         synthesize(job.job_id, job.script)
     except SpeechError as exc:
@@ -223,6 +232,18 @@ def closing_audio(job_id: str) -> FileResponse:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="audio not found")
     return FileResponse(path, media_type="audio/mpeg")
+
+
+async def _amd_fields(request: Request) -> tuple[str, str]:
+    """AnsweredBy is absent on direct webhook tests and on calls placed without AMD."""
+
+    answered_by = request.query_params.get("AnsweredBy", "")
+    call_sid = request.query_params.get("CallSid", "")
+    if request.method == "POST":
+        form = await _form(request)
+        answered_by = form.get("AnsweredBy", answered_by)
+        call_sid = form.get("CallSid", call_sid)
+    return answered_by.strip().lower(), call_sid.strip()
 
 
 async def _form(request: Request) -> dict[str, str]:
